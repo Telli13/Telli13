@@ -5,6 +5,7 @@
  * stock grows mushrooms on the surface through 6 stages.
  *
  * v2: levels, dangers (grubs, hedgehog, rabbit, squirrel), spore reproduction.
+ * v4: soil pests — grub, worm, woodlouse and armoured beetle — each eat the threads their own way.
  * v3: a big world with a camera (wider and deeper), child mushrooms that sprout
  *     from the roots of a strong mother, every animal hunts its own kind of prey,
  *     a bird pecks young mushrooms, ants steal resources underground, a minimap
@@ -76,41 +77,43 @@
       goal: { ripeNow: 1 },
       seed: 11, ww: 2400, wh: 1250, rocks: 12, pools: 1, cap: 18,
       plan: { water: 5, organic: 5, mineral: 4, sugar: 4 },
-      maxMushrooms: 1, hunters: [], grubs: null, ants: null, par: 100,
+      maxMushrooms: 1, hunters: [], pests: null, ants: null, par: 100,
     },
     {
       name: 'Дети',
-      text: 'Когда мать дорастёт до 3-й стадии, ведите нить к самой поверхности подальше от неё — там из корней вырастет гриб-ребёнок. Осторожно: заяц обожает молодые грибы, кликайте по нему!',
+      text: 'Когда мать дорастёт до 3-й стадии, ведите нить к самой поверхности подальше от неё — там из корней вырастет гриб-ребёнок. Осторожно: заяц обожает молодые грибы, а мокрица объедает кончики нитей — кликайте по ним!',
       goal: { children: 2 },
       seed: 22, ww: 3000, wh: 1400, rocks: 17, pools: 2, cap: 20,
       plan: { water: 7, organic: 6, mineral: 5, sugar: 4 },
-      maxMushrooms: 4, hunters: ['rabbit'], attackEvery: [18, 26], grubs: null, ants: null, par: 220,
+      maxMushrooms: 4, hunters: ['rabbit'], attackEvery: [18, 26],
+      pests: { kinds: ['woodlouse'], every: [22, 30], max: 1 }, ants: null, par: 220,
     },
     {
       name: 'Споры',
-      text: 'Зрелый гриб может выпустить споры: кликните по нему и по месту на поверхности — там начнётся новая колония со своими корнями. Синица пикирует на маленькие грибы.',
+      text: 'Зрелый гриб может выпустить споры: кликните по нему и по месту на поверхности — там начнётся новая колония со своими корнями. Синица пикирует на маленькие грибы, а под землёй ползают мокрицы и червяки.',
       goal: { roots: 2, ripeNow: 2 },
       seed: 33, ww: 3400, wh: 1500, rocks: 20, pools: 2, cap: 20,
       plan: { water: 7, organic: 6, mineral: 6, sugar: 5 },
-      maxMushrooms: 5, hunters: ['rabbit', 'bird'], attackEvery: [16, 24], grubs: null, ants: null, par: 300,
+      maxMushrooms: 5, hunters: ['rabbit', 'bird'], attackEvery: [16, 24],
+      pests: { kinds: ['woodlouse', 'worm'], every: [18, 26], max: 2 }, ants: null, par: 300,
     },
     {
       name: 'Подземные воры',
-      text: 'Личинки перегрызают нити — если нить к ребёнку оборвётся, ребёнок погибнет. Муравьи утаскивают ресурсы. Кликайте по ним, чтобы прогнать.',
+      text: 'Под землёй вредители: личинка перегрызает нить, червяк роет ход и рвёт всё на пути, мокрица объедает кончики. Если нить к ребёнку оборвётся — ребёнок погибнет. Муравьи утаскивают ресурсы. Кликайте по всем, чтобы прогнать.',
       goal: { children: 3 },
       seed: 44, ww: 3400, wh: 1600, rocks: 22, pools: 2, cap: 20,
       plan: { water: 7, organic: 7, mineral: 6, sugar: 5 },
       maxMushrooms: 5, hunters: ['rabbit'], attackEvery: [22, 30],
-      grubs: { every: [14, 20], max: 2 }, ants: { every: [16, 24], max: 2 }, par: 320,
+      pests: { kinds: ['grub', 'worm', 'woodlouse'], every: [12, 18], max: 3 }, ants: { every: [16, 24], max: 2 }, par: 320,
     },
     {
       name: 'Голодные звери',
-      text: 'Ёж ест взрослые грибы, заяц — молодые, синица клюёт малышей. Следите за красными метками по краям экрана — там опасность.',
+      text: 'Ёж ест взрослые грибы, заяц — молодые, синица клюёт малышей. Под землёй появился жук в панцире — его надо кликнуть 3 раза. Следите за красными метками по краям экрана — там опасность.',
       goal: { mushrooms: 5, ripeNow: 2 },
       seed: 55, ww: 4000, wh: 1700, rocks: 26, pools: 2, cap: 22,
       plan: { water: 8, organic: 7, mineral: 7, sugar: 6 },
       maxMushrooms: 6, hunters: ['hedgehog', 'rabbit', 'bird'], attackEvery: [12, 18],
-      grubs: { every: [18, 26], max: 2 }, ants: null, par: 420,
+      pests: { kinds: ['grub', 'worm', 'beetle'], every: [14, 20], max: 2 }, ants: null, par: 420,
     },
     {
       name: 'Белка-воришка',
@@ -119,7 +122,7 @@
       seed: 66, ww: 4000, wh: 1800, rocks: 34, pools: 2, cap: 18,
       plan: { water: 7, organic: 6, mineral: 6, sugar: 5 },
       maxMushrooms: 6, hunters: ['hedgehog', 'rabbit', 'squirrel', 'bird'], attackEvery: [10, 15],
-      grubs: { every: [14, 20], max: 3 }, ants: { every: [18, 26], max: 2 }, par: 500,
+      pests: { kinds: ['grub', 'worm', 'woodlouse', 'beetle'], every: [10, 15], max: 3 }, ants: { every: [18, 26], max: 2 }, par: 500,
     },
   ];
 
@@ -133,7 +136,7 @@
     'rock_mossy', 'rock_1', 'rock_2', 'rock_3', 'rock_4',
     'roots_stump', 'roots_long', 'roots_turf',
     'water_drop', 'water_pool', 'leaf', 'crystal', 'sugar',
-    'worm', 'woodlouse', 'grub', 'ant', 'log', 'leaf_pile',
+    'worm', 'woodlouse', 'grub', 'beetle', 'ant', 'log', 'leaf_pile',
   ];
 
   // ---------------------------------------------------------------- helpers
@@ -257,7 +260,7 @@
       pointer: null, activeTip: null, drag: null, keys: new Set(),
       sporeFrom: null, spores: [],
       hunters: [], attackTimer: L.attackEvery ? rr(L.attackEvery[0], L.attackEvery[1]) : 0,
-      grubs: [], grubTimer: L.grubs ? rr(8, 12) : 0,
+      pests: [], pestTimer: L.pests ? rr(8, 12) : 0, pestWarned: {},
       ants: [], antTimer: L.ants ? rr(10, 14) : 0,
       critters: [], decor: [],
       needRebuild: false, lost: 0, result: null,
@@ -1025,7 +1028,22 @@
     }
   }
 
-  // ---- grubs: crawl to a thread and bite it once
+  // ---- underground pests: each kind harms the mycelium in its own way
+  //   grub      — crawls to the nearest thread, chews it through once, leaves full
+  //   worm      — burrows in a straight line and tears every thread it crosses
+  //   woodlouse — nibbles off the fresh ends of branches, three bites
+  //   beetle    — armoured (3 clicks), goes for the thick threads near a mushroom
+  const PESTS = {
+    grub:      { name: 'Личинка', sprite: 'grub', scale: 0.3, speed: 30, chew: CHEW_TIME, hit: 40, hp: 1, faceRight: false, bit: 'Личинка перегрызла нить',
+      first: 'Личинка! Кликните по ней, пока она не перегрызла нить' },
+    worm:      { name: 'Червяк', sprite: 'worm', scale: 0.32, speed: 34, chew: 0, hit: 50, hp: 1, faceRight: true, bit: 'Червяк порвал нить',
+      first: 'Червяк роет ход и рвёт все нити на пути! Кликните по нему' },
+    woodlouse: { name: 'Мокрица', sprite: 'woodlouse', scale: 0.24, speed: 42, chew: 1.3, hit: 38, hp: 1, faceRight: false, bit: 'Мокрица объела кончик нити',
+      first: 'Мокрица объедает молодые кончики нитей! Кликните по ней' },
+    beetle:    { name: 'Жук', sprite: 'beetle', scale: 0.27, speed: 22, chew: 3.0, hit: 42, hp: 3, faceRight: false, bit: 'Жук перегрыз толстую нить',
+      first: 'Жук в панцире грызёт толстые нити! Кликните по нему 3 раза' },
+  };
+
   function spawnNear(x, y, minD, maxD) {
     for (let k = 0; k < 30; k++) {
       const a = rr(0, Math.PI * 2), d = rr(minD, maxD);
@@ -1035,70 +1053,153 @@
     return { x: x < WW / 2 ? 30 : WW - 30, y: clamp(y + 200, SOIL_TOP + 80, WH - 40) };
   }
 
-  function biteable() {
+  function biteable(minDepth = GRUB_SAFE_DEPTH, maxDepth = Infinity) {
     const out = [];
     const nodes = state.nodes;
-    for (let i = 0; i < nodes.length; i += 4) if (!nodes[i].dead && nodes[i].depth >= GRUB_SAFE_DEPTH) out.push(i);
+    for (let i = 0; i < nodes.length; i += 4) {
+      const n = nodes[i];
+      if (!n.dead && n.depth >= minDepth && n.depth <= maxDepth) out.push(i);
+    }
     return out;
   }
 
-  function grubTarget(g) {
+  function nearestOf(list, x, y) {
     let best = -1, bd = Infinity;
-    for (const i of biteable()) {
+    for (const i of list) {
       const n = state.nodes[i];
-      const d = dist(n.x, n.y, g.x, g.y);
+      const d = dist(n.x, n.y, x, y);
       if (d < bd) { bd = d; best = i; }
     }
     return best;
   }
 
-  function updateGrubs(dt) {
-    const G = state.L.grubs;
-    if (G) {
-      state.grubTimer -= dt;
-      if (state.grubTimer <= 0) {
-        state.grubTimer = rr(G.every[0], G.every[1]);
-        const cands = biteable();
-        if (state.grubs.filter((g) => g.state !== 'flee').length < G.max && cands.length) {
-          const n = state.nodes[pick(cands)];
-          const p = spawnNear(n.x, n.y, 380, 600);
-          state.grubs.push({ x: p.x, y: p.y, dir: 1, state: 'seek', target: -1, t: 0, chew: 0, wig: rr(0, 6) });
-          if (!state.grubWarned) { state.grubWarned = true; msg('Личинка! Кликните по ней, пока она не перегрызла нить', 3.5); }
-        }
+  // fresh ends of branches (nodes that have not grown further)
+  function branchEnds() {
+    const out = [];
+    const nodes = state.nodes;
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes[i];
+      if (!n.dead && n.children.length === 0 && n.depth >= GRUB_SAFE_DEPTH + 6) out.push(i);
+    }
+    return out;
+  }
+
+  function pestTarget(p) {
+    if (p.kind === 'woodlouse') return nearestOf(branchEnds(), p.x, p.y);
+    if (p.kind === 'beetle') return nearestOf(biteable(12, 60), p.x, p.y);
+    return nearestOf(biteable(), p.x, p.y);
+  }
+
+  function spawnPest(kind) {
+    const info = PESTS[kind];
+    const cands = kind === 'woodlouse' ? branchEnds() : kind === 'beetle' ? biteable(12, 60) : biteable();
+    if (!cands.length) return false;
+    const n = state.nodes[pick(cands)];
+    const p = { kind, info, x: 0, y: 0, dir: 1, state: 'seek', target: -1, t: 0, chew: 0, wig: rr(0, 6), hp: info.hp, bites: 0, hurt: 0, cool: 0 };
+    if (kind === 'worm') {
+      // comes in from the side and burrows straight through the target thread
+      const side = rand() < 0.5 ? -1 : 1;
+      p.x = clamp(n.x + side * rr(520, 700), 20, WW - 20);
+      p.y = clamp(n.y + rr(-120, 120), SOIL_TOP + 50, WH - 40);
+      const a = Math.atan2(n.y - p.y, n.x - p.x);
+      p.vx = Math.cos(a); p.vy = Math.sin(a);
+      p.dir = Math.sign(p.vx) || 1;
+    } else {
+      const s = spawnNear(n.x, n.y, 380, 600);
+      p.x = s.x; p.y = s.y;
+    }
+    state.pests.push(p);
+    if (!state.pestWarned[kind]) { state.pestWarned[kind] = true; msg(info.first, 3.5); }
+    return true;
+  }
+
+  function pestFlee(p) {
+    p.state = 'flee'; p.t = 0;
+    p.dir = p.x < cam.x + W / 2 ? -1 : 1;
+  }
+
+  function biteAt(i, info) {
+    const n = state.nodes[i];
+    const lost = killSubtree(i);
+    state.fx.push({ kind: 'bite', x: n.x, y: n.y, t: 0, life: 0.8 });
+    msg(info.bit + (lost > 6 ? ' — отрезанная часть засохла' : ''), 2.2);
+    return lost;
+  }
+
+  function updatePests(dt) {
+    const P = state.L.pests;
+    if (P) {
+      state.pestTimer -= dt;
+      if (state.pestTimer <= 0) {
+        state.pestTimer = rr(P.every[0], P.every[1]);
+        if (state.pests.filter((p) => p.state !== 'flee').length < P.max) spawnPest(pick(P.kinds));
       }
     }
-    for (const g of state.grubs) {
-      g.t += dt;
-      if (g.state === 'flee') {
-        g.x += g.dir * 140 * dt;
-        g.y += 20 * dt;
-        if (g.t > 6 || g.x < -60 || g.x > WW + 60) g.gone = true;
+    for (const p of state.pests) {
+      p.t += dt;
+      p.hurt = Math.max(0, p.hurt - dt);
+      if (p.state === 'flee') {
+        p.x += p.dir * 150 * dt;
+        p.y += 25 * dt;
+        if (p.t > 5 || p.x < -80 || p.x > WW + 80) p.gone = true;
         continue;
       }
-      if (g.target < 0 || state.nodes[g.target].dead) g.target = grubTarget(g);
-      if (g.target < 0) { g.state = 'flee'; g.t = 0; g.dir = g.x < WW / 2 ? -1 : 1; continue; }
-      const n = state.nodes[g.target];
-      const d = dist(n.x, n.y, g.x, g.y);
-      if (g.state === 'seek') {
-        if (d < 8) { g.state = 'chew'; g.chew = CHEW_TIME; continue; }
-        const sp = 30 * dt;
-        g.dir = n.x >= g.x ? 1 : -1;
-        g.x += (n.x - g.x) / d * sp;
-        g.y += (n.y - g.y) / d * sp;
-        if (rand() < dt * 0.4) g.target = grubTarget(g);
-      } else if (g.state === 'chew') {
-        g.chew -= dt;
-        if (g.chew <= 0) {
-          const lost = killSubtree(g.target);
-          state.fx.push({ kind: 'bite', x: n.x, y: n.y, t: 0, life: 0.8 });
-          if (lost > 3) msg('Личинка перегрызла нить — отрезанная часть засохла', 2.5);
-          g.target = -1;
-          g.state = 'flee'; g.t = 0;
-          g.dir = g.x < WW / 2 ? -1 : 1;
+      if (p.kind === 'worm') { updateWorm(p, dt); continue; }
+      if (p.state === 'pause') { p.chew -= dt; if (p.chew <= 0) { p.state = 'seek'; p.target = -1; } continue; }
+      if (p.target < 0 || state.nodes[p.target].dead) p.target = pestTarget(p);
+      if (p.target < 0) { pestFlee(p); continue; }
+      const n = state.nodes[p.target];
+      const d = dist(n.x, n.y, p.x, p.y);
+      if (p.state === 'seek') {
+        if (d < 8) { p.state = 'chew'; p.chew = p.info.chew; continue; }
+        const sp = p.info.speed * dt;
+        p.dir = n.x >= p.x ? 1 : -1;
+        p.x += (n.x - p.x) / d * sp;
+        p.y += (n.y - p.y) / d * sp;
+        if (rand() < dt * 0.4) p.target = pestTarget(p);
+      } else if (p.state === 'chew') {
+        p.chew -= dt;
+        if (p.chew > 0) continue;
+        if (p.kind === 'woodlouse') {
+          // bites off the last few steps of the branch
+          let k = p.target;
+          for (let s = 0; s < 8 && state.nodes[k].parent >= 0 && state.nodes[state.nodes[k].parent].depth > GRUB_SAFE_DEPTH; s++) k = state.nodes[k].parent;
+          biteAt(k, p.info);
+          p.bites++;
+          if (p.bites >= 3) pestFlee(p); else { p.state = 'pause'; p.chew = 0.8; }
+        } else {
+          biteAt(p.target, p.info);
+          pestFlee(p);
         }
+        p.target = -1;
       }
     }
-    state.grubs = state.grubs.filter((g) => !g.gone);
+    state.pests = state.pests.filter((p) => !p.gone);
+  }
+
+  function updateWorm(p, dt) {
+    p.x += p.vx * p.info.speed * dt;
+    p.y += p.vy * p.info.speed * dt + Math.sin(p.t * 2) * 0.3;
+    if (p.y < SOIL_TOP + 30 || p.y > WH - 30) p.vy = -p.vy;
+    if (p.x < -80 || p.x > WW + 80 || p.t > 60) { p.gone = true; return; }
+    p.cool -= dt;
+    if (p.cool > 0) return;
+    const head = { x: p.x + p.dir * 40, y: p.y };
+    const { i, d } = nearestNode(head.x, head.y);
+    if (i >= 0 && d < 12 && state.nodes[i].depth >= GRUB_SAFE_DEPTH) {
+      biteAt(i, p.info);
+      p.cool = 1.0;
+      if (++p.bites >= 2) { p.state = 'flee'; p.t = 0; p.dir = p.vx >= 0 ? 1 : -1; } // full: dives away
+    }
+  }
+
+  function hitPest(p) {
+    p.hp--;
+    p.hurt = 0.3;
+    state.fx.push({ kind: 'ring', x: p.x, y: p.y, t: 0, life: 0.6, color: '255,120,90' });
+    if (p.hp > 0) { msg(p.info.name + ': ещё ' + p.hp + (p.hp === 1 ? ' клик' : ' клика'), 1.4); return; }
+    pestFlee(p);
+    msg(p.info.name + (p.kind === 'worm' ? ' уползает вглубь!' : ' убегает!'), 1.4);
   }
 
   // ---- ants: carry resources away underground
@@ -1165,6 +1266,7 @@
   // ---- underground ambient critters
   function makeCritters() {
     state.critters = [];
+    if (levelIndex > 0) return; // later on the soil dwellers are pests, not scenery
     for (let i = 0; i < Math.round(WW / 900); i++) {
       state.critters.push({ s: pick(['worm', 'woodlouse']), x: rr(100, WW - 100), y: rr(SOIL_TOP + 120, WH - 60), dir: rand() < 0.5 ? -1 : 1, speed: rr(8, 13), scale: 0.22 });
     }
@@ -1505,21 +1607,31 @@
   }
 
   function drawPests() {
-    for (const g of state.grubs) {
-      if (!visibleX(g.x, 80)) continue;
-      const im = img.grub, sc = 0.3;
+    for (const g of state.pests) {
+      if (!visibleX(g.x, 100)) continue;
+      const info = g.info;
+      const im = img[info.sprite], sc = info.scale;
       const chewing = g.state === 'chew';
       const wig = Math.sin(g.t * (chewing ? 18 : 6) + g.wig) * (chewing ? 0.08 : 0.05);
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
-      glowDot(g.x, g.y, 42 + Math.sin(g.t * 6) * 5, '255,60,40', g.state === 'flee' ? 0.15 : 0.55);
+      glowDot(g.x, g.y, info.hit + Math.sin(g.t * 6) * 5, '255,60,40', g.state === 'flee' ? 0.15 : 0.55);
+      if (g.hurt > 0) glowDot(g.x, g.y, 30, '255,255,255', g.hurt * 2);
       ctx.restore();
       ctx.save();
       ctx.translate(g.x, g.y);
-      ctx.scale(g.dir > 0 ? -1 : 1, 1);
+      if (g.kind === 'worm') ctx.rotate(Math.atan2(g.vy, Math.abs(g.vx)) * g.dir * 0.6);
+      const faceRight = g.dir > 0;
+      ctx.scale(faceRight === info.faceRight ? 1 : -1, 1);
       ctx.scale(1 + wig, 1 - wig);
       ctx.drawImage(im, -im.width * sc / 2, -im.height * sc / 2, im.width * sc, im.height * sc);
       ctx.restore();
-      if (chewing) ring(g.x, g.y - 34, 12, 1 - g.chew / CHEW_TIME, '#ff6a50');
+      if (chewing) ring(g.x, g.y - 34, 12, 1 - g.chew / info.chew, '#ff6a50');
+      if (info.hp > 1 && g.state !== 'flee') { // armour pips
+        for (let k = 0; k < info.hp; k++) {
+          ctx.fillStyle = k < g.hp ? '#7fd0ff' : 'rgba(40,30,25,0.8)';
+          ctx.beginPath(); ctx.arc(g.x - 12 + k * 12, g.y + 26, 4.5, 0, Math.PI * 2); ctx.fill();
+        }
+      }
     }
     for (const a of state.ants) {
       if (!visibleX(a.x, 80)) continue;
@@ -1894,7 +2006,7 @@
       if (h.state === 'approach' || h.state === 'eat') out.push({ x: h.x, y: GROUND_Y - 30 });
       if (h.state === 'swoop') out.push({ x: h.x, y: Math.max(h.y, 40) });
     }
-    for (const g of state.grubs) if (g.state !== 'flee') out.push({ x: g.x, y: g.y });
+    for (const g of state.pests) if (g.state !== 'flee') out.push({ x: g.x, y: g.y });
     for (const a of state.ants) if (a.state !== 'flee') out.push({ x: a.x, y: a.y });
     return out;
   }
@@ -2164,7 +2276,7 @@
     updateMushrooms(dt);
     updateSpores(dt);
     updateHunters(dt);
-    updateGrubs(dt);
+    updatePests(dt);
     updateAnts(dt);
     respawn(dt);
     if (state.needRebuild) { state.needRebuild = false; rebuildMycelium(); }
@@ -2185,7 +2297,7 @@
     for (const h of state.hunters) {
       if (h.threat && ['approach', 'eat', 'idle', 'return', 'swoop'].includes(h.state) && inBox(p.wx, p.wy, hunterBox(h))) return { kind: 'hunter', h };
     }
-    for (const g of state.grubs) if (g.state !== 'flee' && dist(p.wx, p.wy, g.x, g.y) < 40) return { kind: 'grub', g };
+    for (const g of state.pests) if (g.state !== 'flee' && dist(p.wx, p.wy, g.x, g.y) < g.info.hit) return { kind: 'pest', g };
     for (const a of state.ants) if (a.state !== 'flee' && dist(p.wx, p.wy, a.x, a.y) < 36) return { kind: 'ant', a };
     for (const m of state.mushrooms) if (canSpore(m) && inBox(p.wx, p.wy, mushroomBox(m))) return { kind: 'mushroom', m };
     return null;
@@ -2215,13 +2327,7 @@
       state.sporeFrom = null;
     }
     if (hit && hit.kind === 'hunter') { scareHunter(hit.h); return; }
-    if (hit && hit.kind === 'grub') {
-      hit.g.state = 'flee'; hit.g.t = 0;
-      hit.g.dir = hit.g.x < cam.x + W / 2 ? -1 : 1;
-      state.fx.push({ kind: 'ring', x: hit.g.x, y: hit.g.y, t: 0, life: 0.6, color: '255,120,90' });
-      msg('Личинка уползает!', 1.4);
-      return;
-    }
+    if (hit && hit.kind === 'pest') { hitPest(hit.g); return; }
     if (hit && hit.kind === 'ant') { scareAnt(hit.a); return; }
     if (hit && hit.kind === 'mushroom') { state.sporeFrom = hit.m; msg('Кликните по поверхности, куда полетят споры', 3); return; }
     if (p.wy < SOIL_TOP - 6) { state.drag = { sx: p.sx, sy: p.sy, cx: cam.x, cy: cam.y }; return; } // drag the sky to pan
