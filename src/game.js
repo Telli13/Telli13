@@ -5,6 +5,7 @@
  * stock grows mushrooms on the surface through 6 stages.
  *
  * v2: levels, dangers (grubs, hedgehog, rabbit, squirrel), spore reproduction.
+ * v5: a 3-screen intro on first launch and first-play tips (texts in src/texts.js).
  * v4: soil pests — grub, worm, woodlouse and armoured beetle — each eat the threads their own way.
  * v3: a big world with a camera (wider and deeper), child mushrooms that sprout
  *     from the roots of a strong mother, every animal hunts its own kind of prey,
@@ -266,6 +267,8 @@
       needRebuild: false, lost: 0, result: null,
       sproutMsgAt: -10, motherReadyShown: false,
       bluetit: { x: -200, y: 120, active: false, wait: 6, dir: 1 },
+      tutorial: li === 0 && !progress.tutorialDone ? { step: 0, t: 0, doneAt: null } : null,
+      grewOnce: false, fedOnce: false, hitRock: false,
     };
     makeDecor();
     makeRocks(L.rocks);
@@ -510,6 +513,7 @@
         const rock = rockHit(px, py, 6);
         if (rock) {
           rock.shake = 0.35;
+          state.hitRock = true;
           state.fx.push({ kind: 'blocked', x: px, y: py, t: 0, life: 0.9 });
           msg('Камень! Грибница не может пройти — обойдите его', 2.2);
         } else if (py < SOIL_TOP + 8) {
@@ -564,6 +568,7 @@
       const n = state.nodes[i];
       tip = addTip(i, Math.atan2(y - n.y, x - n.x), { x, y }, 0, PLAYER_SPEED, true);
     }
+    state.grewOnce = true;
     const players = state.tips.filter((t) => t.player);
     if (players.length > MAX_PLAYER_TIPS) players[0].alive = false;
     return tip;
@@ -754,6 +759,7 @@
       if (Math.abs(n.x - r.x) > 80) continue;
       if (dist(n.x, n.y, r.x, r.y) <= r.radius + 6) {
         r.connected = true;
+        state.fedOnce = true;
         r.node = nodeIdx;
         r.path = pathToRoot(nodeIdx);
         state.fx.push({ kind: 'ring', x: r.x, y: r.y, t: 0, life: 0.8, color: RES[r.type].glow });
@@ -2134,6 +2140,7 @@
     panel(px, py, pw, ph, 24);
     text('Mycelium Forest', W / 2, py + 62, 54, '#ffd27a', 'center');
     text('Выберите уровень', W / 2, py + 112, 20, 'rgba(247,232,198,0.85)', 'center', 600);
+    button(px + 24, py + 24, 150, 44, TXT.menu.intro, () => startStory(true), { size: 18 });
     const xs = LEVELS.map((_, i) => px + 110 + i * ((pw - 220) / (LEVELS.length - 1)));
     const ys = LEVELS.map((_, i) => py + 280 + (i % 2 ? 50 : -30));
     ctx.save();
@@ -2195,7 +2202,7 @@
     text('Цель:', W / 2, y, 20, '#ffd27a', 'center');
     y += 32;
     for (const g of goalLines()) { text(g.text + ': ' + g.need, W / 2, y, 19, '#f7e8c6', 'center', 600); y += 28; }
-    button(W / 2 - 110, py + 420, 220, 54, 'Играть', () => { mode = 'play'; msg('Кликните по почве — грибница прорастёт в ту сторону', 4); }, { primary: true, size: 24 });
+    button(W / 2 - 110, py + 420, 220, 54, 'Играть', () => { mode = 'play'; if (!state.tutorial) msg('Кликните по почве — грибница прорастёт в ту сторону', 4); }, { primary: true, size: 24 });
   }
 
   function drawWon() {
@@ -2212,7 +2219,270 @@
     button(px + 430, py + 260, 180, 52, last ? 'Финал!' : 'Дальше', () => (last ? openMenu() : startLevel(levelIndex + 1)), { primary: true, size: 20 });
   }
 
+  // ---------------------------------------------------------------- intro story & first-play tips
+  // All their texts live in src/texts.js (window.MF_TEXT).
+  const TXT = window.MF_TEXT;
+  const STORY_LEN = [3.6, 4.0, 3.8];   // seconds per screen before it moves on by itself
+  const STORY_CAM_Y = 330;              // how far the camera sinks into the soil
+  let story = null;
+  const easeInOut = (t) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
+
+  function startStory(fromMenu) {
+    newWorld(0);
+    buildSoil();
+    rebuildMycelium();
+    cam.y = 0;
+    state.critters = []; // the only worm in the intro is the one in scene 3
+    story = {
+      i: 0, t: 0, fromMenu,
+      branches: makeStoryBranches(),
+      worm: { x: state.startX + 380, y: GROUND_Y + 235 },
+    };
+    mode = 'story';
+  }
+
+  function makeStoryBranches() {
+    const out = [];
+    const grow = (x, y, a, len, w, delay, depth) => {
+      const pts = [{ x, y }];
+      const steps = Math.round(len / 6);
+      for (let s = 0; s < steps; s++) {
+        a += rr(-0.3, 0.3);
+        x += Math.cos(a) * 6; y += Math.sin(a) * 6;
+        if (y < SOIL_TOP + 24) a += angDiff(a, Math.PI / 2) * 0.35; // keep curling down, not along the grass
+        pts.push({ x, y });
+        if (depth < 2 && s > 3 && rand() < 0.12) {
+          grow(x, y, a + (rand() < 0.5 ? -1 : 1) * rr(0.6, 1.1), len * 0.45, w * 0.65, delay + (s / steps) * 0.9, depth + 1);
+        }
+      }
+      out.push({ pts, w, delay });
+    };
+    const x0 = state.startX, y0 = GROUND_Y + ROOT_DY;
+    for (const a of [Math.PI / 2, Math.PI / 2 + 0.55, Math.PI / 2 - 0.55, Math.PI / 2 + 1.0, Math.PI / 2 - 1.0]) {
+      grow(x0, y0, a, rr(100, 170), 2.6, 0, 0);
+    }
+    return out;
+  }
+
+  function storyNext() {
+    story.i++;
+    story.t = 0;
+    if (story.i >= TXT.intro.screens.length) endStory();
+  }
+
+  function endStory() {
+    const fromMenu = story.fromMenu;
+    story = null;
+    progress.introSeen = true;
+    saveProgress();
+    if (fromMenu) { mode = 'menu'; return; }
+    // straight into the game: the little mushroom from the intro is already up
+    newWorld(0);
+    buildSoil();
+    rebuildMycelium();
+    state.mushrooms[0].stage = 1;
+    mode = 'play';
+  }
+
+  function updateStory(dt) {
+    story.t += dt;
+    if (story.i === 1) cam.y = STORY_CAM_Y * easeInOut(clamp(story.t / 1.8, 0, 1));
+    if (story.i === 2) {
+      cam.y = STORY_CAM_Y;
+      story.worm.x -= 18 * dt; // creeps toward the young mycelium
+    }
+    clampCam();
+    if (story.t >= STORY_LEN[story.i]) storyNext();
+  }
+
+  function drawStoryMycelium() {
+    const growT = story.i === 1 ? Math.max(0, story.t - 0.9) : story.i > 1 ? 99 : 0;
+    if (growT <= 0) return;
+    const pulse = 0.85 + 0.15 * Math.sin(state.t * 2);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (const b of story.branches) {
+      const k = clamp((growT - b.delay * 0.8) / 1.3, 0, 1);
+      const n = Math.floor(k * (b.pts.length - 1)) + 1;
+      if (n < 2) continue;
+      const path = () => {
+        ctx.beginPath();
+        ctx.moveTo(b.pts[0].x, b.pts[0].y);
+        for (let i = 1; i < n; i++) ctx.lineTo(b.pts[i].x, b.pts[i].y);
+      };
+      ctx.shadowColor = 'rgba(255,150,40,0.9)';
+      ctx.shadowBlur = 16 * RS;
+      ctx.strokeStyle = `rgba(255,140,35,${0.2 * pulse})`;
+      ctx.lineWidth = b.w * 6 + 4;
+      path(); ctx.stroke();
+      ctx.shadowBlur = 6 * RS;
+      ctx.shadowColor = 'rgba(255,190,80,1)';
+      ctx.strokeStyle = `rgba(255,233,160,${0.95 * pulse})`;
+      ctx.lineWidth = b.w;
+      path(); ctx.stroke();
+      if (k < 1) { const e = b.pts[n - 1]; glowDot(e.x, e.y, 9, '255,190,70', 0.9); }
+    }
+    ctx.shadowBlur = 0;
+    glowDot(state.startX, GROUND_Y + ROOT_DY, 36 + Math.sin(state.t * 2.5) * 6, '255,170,50', 0.6);
+    ctx.restore();
+  }
+
+  function renderStory() {
+    buttons = [];
+    ctx.setTransform(RS, 0, 0, RS, 0, 0);
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+    drawBackdrop();
+    ctx.setTransform(RS, 0, 0, RS, -cam.x * RS, -cam.y * RS);
+    drawUnderground();
+    drawResources();
+    // the soil starts dark and lights up as the camera goes down
+    const dark = story.i === 0 ? 0.8 : story.i === 1 ? 0.8 * (1 - clamp(story.t / 1.8, 0, 1)) : 0;
+    if (dark > 0) {
+      ctx.fillStyle = `rgba(8,4,2,${dark})`;
+      ctx.fillRect(cam.x - 10, GROUND_Y + 30, W + 20, WH);
+    }
+    drawStoryMycelium();
+    drawSurface();
+    // the little beige mushroom in the middle of the forest
+    const x = state.startX;
+    if (story.i === 0) {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      glowDot(x, GROUND_Y - 30, 110 + Math.sin(state.t * 2) * 10, '255,230,170', 0.22);
+      ctx.restore();
+    }
+    drawSprite(ctx, img.mushroom_1, x, GROUND_Y + 14, 0.8, false, 1, Math.sin(state.t * 1.6) * 0.03);
+    if (story.i === 2) { // a worm wriggles in the soil nearby
+      const w = story.worm, im = img.worm, sc = 0.4;
+      const wig = Math.sin(state.t * 7) * 0.08;
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      glowDot(w.x, w.y, 70, '255,60,40', 0.45 + 0.15 * Math.sin(state.t * 6));
+      ctx.restore();
+      ctx.save();
+      ctx.translate(w.x, w.y);
+      ctx.rotate(Math.sin(state.t * 3) * 0.12);
+      ctx.scale(-(1 + wig), 1 - wig); // the sprite faces right; it crawls left
+      ctx.drawImage(im, -im.width * sc / 2, -im.height * sc / 2, im.width * sc, im.height * sc);
+      ctx.restore();
+    }
+
+    ctx.setTransform(RS, 0, 0, RS, 0, 0);
+    const line = TXT.intro.screens[story.i];
+    const a = clamp(story.t / 0.6, 0, 1);
+    const ty = (story.i === 0 ? 170 : 680) + (1 - a) * 18;
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.font = '800 66px "Trebuchet MS", system-ui, sans-serif';
+    const tw = ctx.measureText(line).width;
+    roundRect(W / 2 - tw / 2 - 40, ty - 56, tw + 80, 112, 30);
+    ctx.fillStyle = 'rgba(20,11,6,0.55)';
+    ctx.fill();
+    ctx.restore();
+    ctx.save();
+    ctx.globalAlpha = a;
+    text(line, W / 2, ty + 2, 66, story.i === 2 ? '#ffb39a' : '#ffe2a0', 'center', 800);
+    ctx.restore();
+
+    // progress dots + how to continue
+    for (let i = 0; i < TXT.intro.screens.length; i++) {
+      ctx.fillStyle = i === story.i ? '#ffd27a' : 'rgba(247,232,198,0.35)';
+      ctx.beginPath(); ctx.arc(W / 2 - 20 + i * 20, H - 64, i === story.i ? 6 : 4.5, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.save();
+    ctx.globalAlpha = 0.65 + 0.25 * Math.sin(state.t * 3);
+    text(TXT.intro.next, W / 2, H - 34, 17, '#f7e8c6', 'center', 600);
+    ctx.restore();
+    button(W - 214, 20, 194, 48, TXT.intro.skip, endStory, { size: 19 });
+  }
+
+  // First-play tips: one at a time, each waits for the player to do the thing.
+  const TIPS = [
+    { key: 'grow', done: () => state.grewOnce },
+    { key: 'food', done: () => state.fedOnce },
+    { key: 'rocks', done: () => state.hitRock, timeout: 7 },
+  ];
+
+  function updateTutorial(dt) {
+    const tut = state.tutorial;
+    if (!tut) return;
+    tut.t += dt;
+    const tip = TIPS[tut.step];
+    if (tut.doneAt == null && tut.t > 1.5 && (tip.done() || (tip.timeout && tut.t > tip.timeout))) tut.doneAt = tut.t;
+    if (tut.doneAt != null && tut.t - tut.doneAt > 1.0) {
+      tut.step++;
+      tut.t = 0;
+      tut.doneAt = null;
+      if (tut.step >= TIPS.length) {
+        state.tutorial = null;
+        progress.tutorialDone = true;
+        saveProgress();
+      }
+    }
+  }
+
+  // world-space pointer at what the current tip is about
+  function drawTutorialFocus() {
+    const tut = state.tutorial;
+    if (!tut || tut.doneAt != null) return;
+    const key = TIPS[tut.step].key;
+    let fx = null, fy = null, r = 34;
+    if (key === 'grow') { fx = state.startX + 140; fy = GROUND_Y + 200; }
+    if (key === 'food' || key === 'rocks') {
+      let best = null, bd = Infinity;
+      const list = key === 'food'
+        ? state.resources.filter((o) => !o.connected && !o.dead && (o.type === 'water' || o.type === 'organic'))
+        : state.rocks;
+      for (const o of list) {
+        const ox = o.cx ?? o.x, oy = o.cy ?? o.y;
+        // only point at something on screen and clear of the tip panel
+        if (ox - cam.x < 40 || ox - cam.x > W - 380 || oy - cam.y < 80 || oy - cam.y > H - 190) continue;
+        const d = dist(ox, oy, state.startX, GROUND_Y + 60);
+        if (d < bd) { bd = d; best = o; }
+      }
+      if (best) { fx = best.cx ?? best.x; fy = best.cy ?? best.y; r = (best.rx || best.radius || 30) + 16; }
+    }
+    if (fx == null) return;
+    const k = (state.t * 1.2) % 1;
+    ctx.save();
+    ctx.strokeStyle = `rgba(255,236,170,${0.9 * (1 - k)})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(fx, fy, r + k * 22, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawTutorial() {
+    const tut = state.tutorial;
+    if (!tut) return;
+    const tip = TIPS[tut.step];
+    const label = TXT.tips[tip.key];
+    const inA = clamp(tut.t / 0.4, 0, 1);
+    const outA = tut.doneAt != null ? clamp(1 - (tut.t - tut.doneAt) / 1.0, 0, 1) : 1;
+    const a = Math.min(inA, outA);
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.font = '800 28px "Trebuchet MS", system-ui, sans-serif';
+    const tw = ctx.measureText(label).width;
+    const pw = tw + 110, ph = 64, px = (W - 330) / 2 - pw / 2, py = H - 128 + (1 - inA) * 14;
+    panel(px, py, pw, ph, 32);
+    const ix = px + 40, iy = py + ph / 2;
+    if (tip.key === 'grow') {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      glowDot(ix, iy, 18 + Math.sin(state.t * 6) * 3, '255,190,70', 0.95);
+      ctx.restore();
+    } else {
+      const im = img[tip.key === 'food' ? 'water_drop' : 'rock_4'];
+      const sc = 36 / Math.max(im.width, im.height);
+      drawSprite(ctx, im, ix, iy + im.height * sc / 2, sc);
+    }
+    if (tut.doneAt != null) text('✓', px + pw - 26, iy + 1, 26, '#9be86b', 'center');
+    text(label, px + 74, iy + 1, 28, '#fff1cf', 'left', 800);
+    ctx.restore();
+  }
+
   function render() {
+    if (mode === 'story') { renderStory(); return; }
     buttons = [];
     ctx.setTransform(RS, 0, 0, RS, 0, 0);
     ctx.globalAlpha = 1;
@@ -2227,10 +2497,11 @@
     drawSporeClouds();
     drawSporeAim();
     drawCursor();
+    if (mode === 'play') drawTutorialFocus();
     drawWorldFx();
     ctx.setTransform(RS, 0, 0, RS, 0, 0); // screen space
     drawFlyers();
-    if (mode === 'play') drawHud();
+    if (mode === 'play') { drawHud(); drawTutorial(); }
     if (mode === 'menu') drawMenu();
     if (mode === 'intro') drawIntro();
     if (mode === 'won') drawWon();
@@ -2252,6 +2523,7 @@
     updateCritters(dt);
     updateFx(dt);
     if (state.pointer) { state.pointer.wx = state.pointer.sx + cam.x; state.pointer.wy = state.pointer.sy + cam.y; }
+    if (mode === 'story') updateStory(dt);
     if (mode !== 'play') {
       for (const h of state.hunters) if (h.ground && h.state === 'idle') ambientHunter(h, dt);
       updateTips(dt);
@@ -2277,6 +2549,7 @@
     updateSpores(dt);
     updateHunters(dt);
     updatePests(dt);
+    updateTutorial(dt);
     updateAnts(dt);
     respawn(dt);
     if (state.needRebuild) { state.needRebuild = false; rebuildMycelium(); }
@@ -2311,6 +2584,7 @@
   function onPress(p, buttonIdx) {
     const hit = hoverTarget(p);
     if (hit && hit.kind === 'button') { hit.b.onClick(); return; }
+    if (mode === 'story') { storyNext(); return; }
     if (mode !== 'play') return;
     if (buttonIdx !== 0) { state.drag = { sx: p.sx, sy: p.sy, cx: cam.x, cy: cam.y }; return; }
     if (hit && hit.kind === 'minimap') { state.mmDrag = true; minimapJump(p); return; }
@@ -2389,6 +2663,11 @@
     const key = KEYMAP[e.key] || e.key;
     if (key.startsWith('Arrow')) e.preventDefault();
     state.keys.add(key);
+    if (mode === 'story') {
+      if (e.key === 'Escape') endStory();
+      else if ([' ', 'Enter', 'ArrowRight'].includes(e.key)) storyNext();
+      return;
+    }
     if (e.key === 'Escape') { if (state.sporeFrom) state.sporeFrom = null; else if (mode === 'play') openMenu(); }
     if (['r', 'R', 'к', 'К'].includes(e.key) && mode === 'play') startLevel(levelIndex);
   });
@@ -2416,6 +2695,7 @@
     rebuildMycelium();
     const params = new URLSearchParams(location.search);
     if (params.get('level')) startLevel(clamp(Number(params.get('level')) - 1, 0, LEVELS.length - 1));
+    else if (!progress.introSeen || params.get('intro')) startStory(false); // first launch only
     requestAnimationFrame((t) => { last = t; requestAnimationFrame(frame); });
   }).catch((err) => {
     document.getElementById('loading').textContent = err.message + '. Запустите игру через локальный сервер (см. README).';
@@ -2424,7 +2704,7 @@
 
   window.mycelium = {
     get state() { return state; }, get mode() { return mode; }, cam,
-    startLevel, growToward, centerOn, LEVELS, GROUND_Y, SOIL_TOP,
+    startLevel, growToward, centerOn, startStory, get story() { return story; }, LEVELS, GROUND_Y, SOIL_TOP,
     play() { mode = 'play'; },
   };
 })();
