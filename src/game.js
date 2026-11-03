@@ -5,6 +5,7 @@
  * stock grows mushrooms on the surface through 6 stages.
  *
  * v2: levels, dangers (grubs, hedgehog, rabbit, squirrel), spore reproduction.
+ * v6: rain — clouds gather from water; warm rain feeds the soil, a storm washes pests out.
  * v5: a 3-screen intro on first launch and first-play tips (texts in src/texts.js).
  * v4: soil pests — grub, worm, woodlouse and armoured beetle — each eat the threads their own way.
  * v3: a big world with a camera (wider and deeper), child mushrooms that sprout
@@ -268,6 +269,7 @@
       sproutMsgAt: -10, motherReadyShown: false,
       bluetit: { x: -200, y: 120, active: false, wait: 6, dir: 1 },
       tutorial: li === 0 && !progress.tutorialDone ? { step: 0, t: 0, doneAt: null } : null,
+      clouds: 0, rain: null, cloudsShown: false,
       grewOnce: false, fedOnce: false, hitRock: false,
     };
     makeDecor();
@@ -824,7 +826,7 @@
 
     for (const f of state.flyers) {
       f.t += dt / 0.75;
-      if (f.t >= 1) { f.done = true; state.counts[f.type]++; state.bump[f.type] = 1; }
+      if (f.t >= 1) { f.done = true; state.counts[f.type]++; state.bump[f.type] = 1; if (f.type === 'water') addClouds(1); }
     }
     state.flyers = state.flyers.filter((f) => !f.done);
     for (const t of RES_ORDER) state.bump[t] = Math.max(0, state.bump[t] - dt * 3);
@@ -2481,6 +2483,185 @@
     ctx.restore();
   }
 
+  // ---------------------------------------------------------------- rain
+  // Water delivered to the stock also gathers clouds. A full enough sky lets the
+  // player call rain over the part of the forest the camera is looking at:
+  //   warm rain — feeds the soil: new resources sprout underground;
+  //   storm     — washes pests out of the soil (they rot into organic matter)
+  //               and scatters the animals on the surface.
+  const CLOUDS_MAX = 12;
+  const RAINS = {
+    good:  { cost: 6,  dur: 8, key: '1', drops: '150,205,255', sky: 'rgba(40,60,90,', tint: 0.38, cloud: '70,85,105' },
+    storm: { cost: 12, dur: 6, key: '2', drops: '210,205,255', sky: 'rgba(20,16,40,', tint: 0.6, cloud: '35,32,55' },
+  };
+
+  function addClouds(n) {
+    const before = state.clouds;
+    state.clouds = Math.min(CLOUDS_MAX, state.clouds + n);
+    if (before < RAINS.good.cost && state.clouds >= RAINS.good.cost && !state.cloudsShown) {
+      state.cloudsShown = true;
+      msg(TXT.rain.ready, 4);
+    }
+  }
+
+  function callRain(kind) {
+    const R = RAINS[kind];
+    if (state.rain) { msg(TXT.rain.busy, 1.6); return; }
+    if (state.clouds < R.cost) { msg(TXT.rain.need + ' (' + Math.floor(state.clouds) + '/' + R.cost + ')', 2); return; }
+    state.clouds -= R.cost;
+    // it rains over what the player is looking at right now
+    state.rain = { kind, t: 0, dur: R.dur, x0: cam.x, x1: cam.x + W, drops: [], spawnT: 0.8, hits: [1.0, 3.5], flash: 0, spawned: 0 };
+    msg(kind === 'good' ? TXT.rain.goodCast : TXT.rain.stormCast, 3);
+  }
+
+  function updateRain(dt) {
+    const r = state.rain;
+    if (!r) return;
+    r.t += dt;
+    r.flash = Math.max(0, r.flash - dt * 2.5);
+    const raining = r.t < r.dur;
+    // drops: world-space streaks falling through the rain area
+    if (raining) {
+      for (let i = 0; i < 22; i++) {
+        r.drops.push({ x: rr(r.x0 - 100, r.x1), y: rr(-60, 40), v: rr(900, 1200), soak: rr(60, 260) });
+      }
+    }
+    for (const d of r.drops) {
+      d.y += d.v * dt;
+      d.x += d.v * dt * 0.12;
+      if (d.y > GROUND_Y + 10) { d.v = Math.min(d.v, 120); } // seeps into the soil, slowly
+      if (d.y > GROUND_Y + d.soak) d.gone = true;
+    }
+    r.drops = r.drops.filter((d) => !d.gone);
+
+    if (r.kind === 'good' && raining) {
+      r.spawnT -= dt;
+      if (r.spawnT <= 0 && r.spawned < 7) { // the rain feeds the soil
+        r.spawnT = 0.9;
+        const type = pick(['organic', 'organic', 'water', 'water', 'mineral', 'sugar']);
+        for (let k = 0; k < 40; k++) {
+          const x = rr(r.x0 + 60, r.x1 - 60), y = rr(SOIL_TOP + 40, Math.min(WH - 40, GROUND_Y + 620));
+          if (!freeSpot(x, y, 30)) continue;
+          const res = makeResource(type, x, y, false);
+          res.fade = -1;
+          state.fx.push({ kind: 'ring', x, y, t: 0, life: 0.9, color: RES[type].glow });
+          r.spawned++;
+          break;
+        }
+      }
+    }
+    if (r.kind === 'storm') {
+      if (raining && rand() < dt * 0.9) r.flash = 1; // lightning
+      while (r.hits.length && r.t >= r.hits[0]) { r.hits.shift(); stormStrike(r); }
+    }
+    if (!raining && !r.drops.length) state.rain = null;
+  }
+
+  function stormStrike(r) {
+    r.flash = 1;
+    const inside = (x) => x >= r.x0 - 40 && x <= r.x1 + 40;
+    let washed = 0, scared = 0;
+    for (const p of state.pests) {
+      if (p.state === 'flee' || !inside(p.x)) continue;
+      if (p.kind === 'beetle' && p.hp > 2) { p.hp -= 2; p.hurt = 0.5; continue; } // the armour holds once
+      p.gone = true;
+      washed++;
+      const res = makeResource('organic', p.x, clamp(p.y, SOIL_TOP + 30, WH - 30), false, 2);
+      res.fade = -1;
+      burst(p.x, p.y, '160,200,255', 10);
+    }
+    state.pests = state.pests.filter((p) => !p.gone);
+    for (const a of state.ants) if (a.state !== 'flee' && inside(a.x)) { scareAnt(a); washed++; }
+    for (const h of state.hunters) {
+      if (!h.threat || h.state === 'away' || h.state === 'flee' || !inside(h.x)) continue;
+      scareHunter(h);
+      h.wet = true;
+      scared++;
+    }
+    if (washed || scared) msg(TXT.rain.stormHit.replace('{pests}', washed).replace('{animals}', scared), 3);
+  }
+
+  function drawRain() {
+    const r = state.rain;
+    if (!r) return;
+    const R = RAINS[r.kind];
+    const fade = Math.min(1, r.t / 0.6, Math.max(0, (r.dur + 0.8 - r.t) / 0.8));
+    // a darker sky over the rain area
+    ctx.save();
+    const g = ctx.createLinearGradient(0, cam.y - 20, 0, GROUND_Y + 20);
+    g.addColorStop(0, R.sky + (R.tint * fade) + ')');
+    g.addColorStop(1, R.sky + (R.tint * 0.4 * fade) + ')');
+    ctx.fillStyle = g;
+    ctx.fillRect(r.x0 - 100, Math.min(0, cam.y) - 40, r.x1 - r.x0 + 200, GROUND_Y + 60 - Math.min(0, cam.y));
+    ctx.strokeStyle = `rgba(${R.drops},${0.75 * fade})`;
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    for (const d of r.drops) {
+      if (d.y < GROUND_Y + 10) { ctx.moveTo(d.x, d.y); ctx.lineTo(d.x - 4, d.y - 28); }
+    }
+    ctx.stroke();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = `rgba(${R.drops},0.5)`;
+    for (const d of r.drops) if (d.y >= GROUND_Y + 10) ctx.fillRect(d.x - 1, d.y - 1, 2.4, 2.4);
+    ctx.restore();
+  }
+
+  function drawRainOverlay() {
+    const r = state.rain;
+    if (!r) return;
+    // a band of heavy clouds over the rain area (screen space)
+    const R = RAINS[r.kind];
+    const fade = Math.min(1, r.t / 0.6, Math.max(0, (r.dur + 0.8 - r.t) / 0.8));
+    const top = -cam.y;
+    if (top > -260) {
+      ctx.save();
+      for (let x = r.x0 - 60; x < r.x1 + 60; x += 110) {
+        const sx = x - cam.x, wob = Math.sin(x * 0.013 + state.t * 0.4) * 18;
+        if (sx < -160 || sx > W + 160) continue;
+        const g = ctx.createRadialGradient(sx, top + 30 + wob, 10, sx, top + 30 + wob, 150);
+        g.addColorStop(0, `rgba(${R.cloud},${0.85 * fade})`);
+        g.addColorStop(1, `rgba(${R.cloud},0)`);
+        ctx.fillStyle = g;
+        ctx.fillRect(sx - 150, top - 120 + wob, 300, 300);
+      }
+      ctx.restore();
+    }
+    if (!r.flash) return;
+    ctx.save();
+    ctx.fillStyle = `rgba(235,230,255,${r.flash * 0.35})`;
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+  }
+
+  function drawRainPanel() {
+    const x = 14, y = 66, w = 236;
+    panel(x, y, w, 132, 14);
+    const k = state.clouds / CLOUDS_MAX;
+    text(TXT.rain.meter, x + 14, y + 20, 15, '#cfe4ff');
+    text(Math.floor(state.clouds) + '/' + CLOUDS_MAX, x + w - 14, y + 20, 14, 'rgba(247,232,198,0.8)', 'right', 600);
+    roundRect(x + 14, y + 34, w - 28, 8, 4);
+    ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fill();
+    if (k > 0) {
+      roundRect(x + 14, y + 34, Math.max(8, (w - 28) * k), 8, 4);
+      ctx.fillStyle = '#8cc8ff'; ctx.fill();
+    }
+    // cost marks on the bar
+    for (const R of [RAINS.good, RAINS.storm]) {
+      const mx = x + 14 + (w - 28) * R.cost / CLOUDS_MAX;
+      ctx.fillStyle = 'rgba(255,240,210,0.8)';
+      ctx.fillRect(mx - 1, y + 31, 2, 14);
+    }
+    for (const [kind, by] of [['good', y + 52], ['storm', y + 92]]) {
+      const R = RAINS[kind];
+      const ok = state.clouds >= R.cost && !state.rain;
+      const label = (kind === 'good' ? '☔ ' + TXT.rain.good : '⛈ ' + TXT.rain.storm) + ' · ' + R.cost + ' [' + R.key + ']';
+      ctx.save();
+      if (!ok) ctx.globalAlpha = 0.5;
+      button(x + 12, by, w - 24, 34, label, () => callRain(kind), { size: 15, primary: ok && kind === 'good' });
+      ctx.restore();
+    }
+  }
+
   function render() {
     if (mode === 'story') { renderStory(); return; }
     buttons = [];
@@ -2499,9 +2680,11 @@
     drawCursor();
     if (mode === 'play') drawTutorialFocus();
     drawWorldFx();
+    drawRain();
     ctx.setTransform(RS, 0, 0, RS, 0, 0); // screen space
     drawFlyers();
-    if (mode === 'play') { drawHud(); drawTutorial(); }
+    drawRainOverlay();
+    if (mode === 'play') { drawHud(); drawRainPanel(); drawTutorial(); }
     if (mode === 'menu') drawMenu();
     if (mode === 'intro') drawIntro();
     if (mode === 'won') drawWon();
@@ -2550,6 +2733,7 @@
     updateHunters(dt);
     updatePests(dt);
     updateTutorial(dt);
+    updateRain(dt);
     updateAnts(dt);
     respawn(dt);
     if (state.needRebuild) { state.needRebuild = false; rebuildMycelium(); }
@@ -2670,6 +2854,8 @@
     }
     if (e.key === 'Escape') { if (state.sporeFrom) state.sporeFrom = null; else if (mode === 'play') openMenu(); }
     if (['r', 'R', 'к', 'К'].includes(e.key) && mode === 'play') startLevel(levelIndex);
+    if (mode === 'play' && e.key === RAINS.good.key) callRain('good');
+    if (mode === 'play' && e.key === RAINS.storm.key) callRain('storm');
   });
   window.addEventListener('keyup', (e) => { if (state) state.keys.delete(KEYMAP[e.key] || e.key); });
   window.addEventListener('blur', () => { if (state) state.keys.clear(); });

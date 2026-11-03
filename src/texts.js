@@ -18,6 +18,18 @@ window.MF_TEXT = {
     food: 'Тянись к воде и пище',
     rocks: 'Камни не пройти',
   },
+  // rain: clouds gather from collected water, then the player calls one of two rains
+  rain: {
+    meter: 'Тучи',
+    good: 'Тёплый дождь',
+    storm: 'Гроза',
+    ready: 'Тучи собрались — можно вызвать дождь! Он пойдёт там, куда смотрит камера',
+    need: 'Мало туч — собирай воду',
+    busy: 'Дождь уже идёт',
+    goodCast: 'Тёплый дождь: почва напитается, появятся новые ресурсы',
+    stormCast: 'Гроза! Вредителей смоет, звери разбегутся',
+    stormHit: 'Гроза смыла вредителей: {pests}, спугнула зверей: {animals}',
+  },
   menu: {
     intro: '▶ Интро',
   },
