@@ -2514,8 +2514,8 @@
     if (state.rain) { msg(TXT.rain.busy, 1.6); return; }
     if (state.clouds < R.cost) { msg(TXT.rain.need + ' (' + Math.floor(state.clouds) + '/' + R.cost + ')', 2); return; }
     state.clouds -= R.cost;
-    // it rains over what the player is looking at right now
-    state.rain = { kind, t: 0, dur: R.dur, x0: cam.x, x1: cam.x + W, drops: [], spawnT: 0.8, hits: [1.0, 3.5], flash: 0, spawned: 0 };
+    // it rains over the whole forest
+    state.rain = { kind, t: 0, dur: R.dur, x0: 0, x1: WW, drops: [], spawnT: 0.8, hits: [1.0, 3.5], flash: 0, spawned: 0 };
     msg(kind === 'good' ? TXT.rain.goodCast : TXT.rain.stormCast, 3);
   }
 
@@ -2528,7 +2528,8 @@
     // drops: world-space streaks falling through the rain area
     if (raining) {
       for (let i = 0; i < 22; i++) {
-        r.drops.push({ x: rr(r.x0 - 100, r.x1), y: rr(-60, 40), v: rr(900, 1200), soak: rr(60, 260) });
+        const top = Math.min(cam.y, GROUND_Y) - 60; // drops are only made where the camera looks
+        r.drops.push({ x: rr(cam.x - 140, cam.x + W + 40), y: rr(top, top + 100), v: rr(900, 1200), soak: rr(60, 260) });
       }
     }
     for (const d of r.drops) {
@@ -2541,11 +2542,15 @@
 
     if (r.kind === 'good' && raining) {
       r.spawnT -= dt;
-      if (r.spawnT <= 0 && r.spawned < 7) { // the rain feeds the soil
-        r.spawnT = 0.9;
+      const most = 7 + Math.round(WW / 600); // the rain feeds the soil of the whole forest
+      if (r.spawnT <= 0 && r.spawned < most) {
+        r.spawnT = r.dur / most;
         const type = pick(['organic', 'organic', 'water', 'water', 'mineral', 'sugar']);
         for (let k = 0; k < 40; k++) {
-          const x = rr(r.x0 + 60, r.x1 - 60), y = rr(SOIL_TOP + 40, Math.min(WH - 40, GROUND_Y + 620));
+          // half of it near the network, so the player can reach it; the rest anywhere
+          const near = k < 20 && state.nodes.length ? state.nodes[Math.floor(rand() * state.nodes.length)] : null;
+          const x = near ? clamp(near.x + rr(-420, 420), 60, WW - 60) : rr(60, WW - 60);
+          const y = near ? clamp(near.y + rr(-200, 260), SOIL_TOP + 40, WH - 40) : rr(SOIL_TOP + 40, Math.min(WH - 40, GROUND_Y + 620));
           if (!freeSpot(x, y, 30)) continue;
           const res = makeResource(type, x, y, false);
           res.fade = -1;
@@ -2597,7 +2602,7 @@
     g.addColorStop(0, R.sky + (R.tint * fade) + ')');
     g.addColorStop(1, R.sky + (R.tint * 0.4 * fade) + ')');
     ctx.fillStyle = g;
-    ctx.fillRect(r.x0 - 100, Math.min(0, cam.y) - 40, r.x1 - r.x0 + 200, GROUND_Y + 60 - Math.min(0, cam.y));
+    ctx.fillRect(cam.x - 100, Math.min(0, cam.y) - 40, W + 200, GROUND_Y + 60 - Math.min(0, cam.y));
     ctx.strokeStyle = `rgba(${R.drops},${0.75 * fade})`;
     ctx.lineWidth = 2.2;
     ctx.beginPath();
@@ -2620,7 +2625,7 @@
     const top = -cam.y;
     if (top > -260) {
       ctx.save();
-      for (let x = r.x0 - 60; x < r.x1 + 60; x += 110) {
+      for (let x = Math.floor(cam.x / 110) * 110 - 110; x < cam.x + W + 160; x += 110) {
         const sx = x - cam.x, wob = Math.sin(x * 0.013 + state.t * 0.4) * 18;
         if (sx < -160 || sx > W + 160) continue;
         const g = ctx.createRadialGradient(sx, top + 30 + wob, 10, sx, top + 30 + wob, 150);
