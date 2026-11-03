@@ -5,6 +5,7 @@
  * stock grows mushrooms on the surface through 6 stages.
  *
  * v2: levels, dangers (grubs, hedgehog, rabbit, squirrel), spore reproduction.
+ * v11: animals move with code-driven squash & stretch, waddles, hops, wing beats and body waves.
  * v10: a rotting log to trade water for organic matter, and honey fungus that kills trees.
  * v9: neighbouring fungi — golden kin to merge with, a purple rival to fight at the front.
  * v8: trees — mycorrhiza unions pay sugar and raise their own kind of children; fairy rings.
@@ -1000,11 +1001,18 @@
     }
   }
 
+  // turn round now and then, never twice within a few seconds
+  function lookAround(h, dt) {
+    h.turnT = (h.turnT ?? rr(3, 6)) - dt;
+    if (h.turnT <= 0) { h.turnT = rr(4, 8); h.dir = -h.dir; }
+  }
+
   function ambientHunter(h, dt) {
     h.y = 0;
     if (h.kind === 'rabbit') {
       if (h.hop <= 0) {
         h.timer -= dt;
+        lookAround(h, dt); // looks around while sitting
         if (h.timer <= 0) {
           h.hop = 0.001; h.from = h.x;
           h.to = clamp(h.x + rr(-90, 90), h.home - 120, h.home + 120);
@@ -1019,11 +1027,24 @@
         if (h.hop >= 1) { h.hop = 0; h.y = 0; h.timer = rr(2.5, 6); }
       }
     } else if (h.kind === 'hedgehog') {
-      if (h.timer > 0) { h.timer -= dt; return; }
+      if (h.timer > 0) { h.timer -= dt; lookAround(h, dt); return; }
       h.x += h.dir * 22 * dt;
       h.walkT += dt;
       if (Math.abs(h.x - h.home) > 120) { h.dir = Math.sign(h.home - h.x); h.timer = rr(1, 3); }
       else if (rand() < dt * 0.08) h.timer = rr(0.8, 2.5);
+    } else if (h.kind === 'squirrel') { // dashes, then freezes and looks around
+      h.flick = Math.max(0, (h.flick || 0) - dt * 1.4);
+      if (h.dashing) {
+        const d = h.dashTo - h.x;
+        h.dir = Math.sign(d) || h.dir;
+        h.x += Math.sign(d) * Math.min(Math.abs(d), 300 * dt);
+        h.walkT += dt;
+        if (Math.abs(d) < 2) { h.dashing = false; h.timer = rr(1.5, 4); h.flick = 1; }
+      } else {
+        h.timer -= dt;
+        if (h.timer <= 0) { h.dashing = true; h.dashTo = clamp(h.x + rr(-170, 170), h.home - 220, h.home + 220); }
+        else lookAround(h, dt);
+      }
     }
   }
 
@@ -1033,6 +1054,14 @@
       d.wait -= dt;
       if (d.wait <= 0) { d.peck = 1; d.wait = rr(1.2, 4); }
       d.peck = Math.max(0, d.peck - dt * 3);
+      d.hopT = (d.hopT ?? rr(2, 5)) - dt;
+      if (d.hopT <= 0 && !(d.hop > 0)) { // a short hop, sometimes turning round first
+        d.hopT = rr(3, 7);
+        d.hop = 1;
+        if (rand() < 0.35) d.flip = !d.flip;
+        d.hopDx = (d.flip ? -1 : 1) * rr(10, 24);
+      }
+      if (d.hop > 0) { d.hop -= dt * 3; if (d.hop <= 0) { d.x += d.hopDx; d.hop = 0; } }
     }
     const t = state.bluetit;
     if (state.L.hunters.includes('bird')) { t.active = false; return; }
@@ -1534,13 +1563,19 @@
     for (const c of state.critters) {
       if (!visibleX(c.x)) continue;
       const im = img[c.s];
-      const wig = Math.sin(state.t * 4 + c.x * 0.05) * 0.03;
       ctx.save();
       ctx.globalAlpha = 0.85;
-      ctx.translate(c.x, c.y);
-      ctx.scale(c.dir < 0 ? -1 : 1, 1);
-      ctx.scale(1 + wig, 1 - wig);
-      ctx.drawImage(im, -im.width * c.scale / 2, -im.height * c.scale / 2, im.width * c.scale, im.height * c.scale);
+      if (c.s === 'worm') { // the worm faces right in its picture
+        ctx.translate(c.x, c.y);
+        ctx.scale(c.dir < 0 ? -1 : 1, 1);
+        drawWavy(im, c.scale, state.t * 4 + c.x * 0.05, 4, 1.3);
+      } else { // woodlouse faces left; it scurries
+        const j = state.t * 34 + c.x;
+        ctx.translate(c.x, c.y + Math.sin(j) * 0.7);
+        ctx.rotate(Math.sin(j * 0.8) * 0.03);
+        ctx.scale(c.dir > 0 ? -1 : 1, 1);
+        ctx.drawImage(im, -im.width * c.scale / 2, -im.height * c.scale / 2, im.width * c.scale, im.height * c.scale);
+      }
       ctx.restore();
     }
     const v = view();
@@ -1639,12 +1674,24 @@
       if (g.hurt > 0) glowDot(g.x, g.y, 30, '255,255,255', g.hurt * 2);
       ctx.restore();
       ctx.save();
-      ctx.translate(g.x, g.y);
-      if (g.kind === 'worm') ctx.rotate(Math.atan2(g.vy, Math.abs(g.vx)) * g.dir * 0.6);
       const faceRight = g.dir > 0;
-      ctx.scale(faceRight === info.faceRight ? 1 : -1, 1);
-      ctx.scale(1 + wig, 1 - wig);
-      ctx.drawImage(im, -im.width * sc / 2, -im.height * sc / 2, im.width * sc, im.height * sc);
+      if (g.kind === 'worm' || g.kind === 'grub') {
+        // a wave runs along the body; the grub also pulls itself in and out
+        ctx.translate(g.x, g.y);
+        if (g.kind === 'worm') ctx.rotate(Math.atan2(g.vy, Math.abs(g.vx)) * g.dir * 0.6);
+        ctx.scale(faceRight === info.faceRight ? 1 : -1, 1);
+        const speed = chewing ? 14 : 6;
+        if (g.kind === 'worm') drawWavy(im, sc, g.t * speed + g.wig, 6, 1.3);
+        else drawWavy(im, sc, g.t * speed + g.wig, 2.2, 0.8, 1 + 0.07 * Math.sin(g.t * 5 + g.wig));
+      } else {
+        // beetles and woodlice scurry: tiny fast jitter of the body and legs
+        const j = g.t * 36 + g.wig;
+        ctx.translate(g.x, g.y + Math.sin(j) * 0.9);
+        ctx.rotate(Math.sin(j * 0.8) * 0.035);
+        ctx.scale(faceRight === info.faceRight ? 1 : -1, 1);
+        ctx.scale(1 + 0.025 * Math.sin(j * 1.1) + wig * 0.3, 1 - 0.025 * Math.sin(j * 1.1));
+        ctx.drawImage(im, -im.width * sc / 2, -im.height * sc / 2, im.width * sc, im.height * sc);
+      }
       ctx.restore();
       if (chewing) ring(g.x, g.y - 34, 12, 1 - g.chew / info.chew, '#ff6a50');
       if (info.hp > 1 && g.state !== 'flee') { // armour pips
@@ -1661,8 +1708,10 @@
       glowDot(a.x, a.y, 36 + Math.sin(a.t * 7) * 4, '255,60,40', a.state === 'flee' ? 0.12 : 0.5);
       ctx.restore();
       ctx.save();
-      ctx.translate(a.x, a.y + Math.sin(a.t * 20));
+      ctx.translate(a.x, a.y + Math.sin(a.t * 40) * 0.8);
+      ctx.rotate(Math.sin(a.t * 33) * 0.04);
       ctx.scale(a.dir > 0 ? -1 : 1, 1);
+      ctx.scale(1 + 0.03 * Math.sin(a.t * 45), 1 - 0.03 * Math.sin(a.t * 45));
       ctx.drawImage(im, -im.width * sc / 2, -im.height * sc / 2, im.width * sc, im.height * sc);
       ctx.restore();
       if (a.state === 'carry' && a.loot) {
@@ -1673,24 +1722,93 @@
     }
   }
 
+  // ---------------------------------------------------------------- body animation (code, no extra frames)
+  // A sprite drawn from its feet with squash & stretch (sx, sy) and a tilt.
+  function drawBody(im, x, bottom, scale, flip, sx = 1, sy = 1, rot = 0, alpha = 1) {
+    const w = im.width * scale, h = im.height * scale;
+    ctx.save();
+    ctx.globalAlpha *= alpha;
+    ctx.translate(x, bottom);
+    if (rot) ctx.rotate(rot);
+    ctx.scale((flip ? -1 : 1) * sx, sy);
+    ctx.drawImage(im, -w / 2, -h, w, h);
+    ctx.restore();
+  }
+
+  // A long body (worm, grub) cut into vertical slices that ride a travelling wave.
+  // Drawn centred on the current origin; the caller sets position, flip and turn.
+  function drawWavy(im, scale, phase, amp, waves, stretch = 1) {
+    const w = im.width * scale * stretch, h = im.height * scale / Math.sqrt(stretch), n = 16;
+    for (let i = 0; i < n; i++) {
+      const off = Math.sin(phase - (i / n) * Math.PI * 2 * waves) * amp;
+      ctx.drawImage(im, (im.width * i) / n, 0, im.width / n + 1, im.height, -w / 2 + (w * i) / n, -h / 2 + off, w / n + 0.8, h);
+    }
+  }
+
+  // A bird in flight: the body squeezes in height with each wing beat and bobs with it.
+  function drawFlying(im, x, y, scale, flip, phase) {
+    const f = Math.sin(phase);
+    const sy = 0.7 + 0.3 * (0.5 + 0.5 * f), h = im.height * scale;
+    drawBody(im, x, y + h / 2 - f * 3, scale, flip, 1 + 0.04 * (1 - f), sy, 0.07 * Math.cos(phase) * (flip ? -1 : 1));
+  }
+
+  const MOVING = ['approach', 'return', 'flee', 'carry'];
+  function isMoving(h) {
+    return MOVING.includes(h.state) || (h.kind === 'hedgehog' && h.state === 'idle' && h.timer <= 0) || (h.kind === 'squirrel' && h.dashing);
+  }
+
   function drawHunter(h) {
     if (h.state === 'away' || !visibleX(h.x, 200)) return;
     if (h.ground) {
       const im = img[h.kind];
-      const bottom = GROUND_Y + 12 + h.y;
-      let rot = 0;
-      if (h.kind === 'squirrel' && h.state === 'idle') rot = Math.sin(state.t * 1.4) * 0.015;
-      if (h.state === 'eat') rot = Math.sin(state.t * 14) * 0.04;
-      const step = h.kind === 'hedgehog' && ['approach', 'return', 'flee'].includes(h.state) ? Math.abs(Math.sin(h.walkT * 9)) * 2 : 0;
-      drawSprite(ctx, im, h.x, bottom - step, h.info.scale, h.dir < 0, 1, rot);
+      const flip = h.dir < 0, fwd = flip ? -1 : 1;
+      let bottom = GROUND_Y + 12 + h.y, sx = 1, sy = 1, rot = 0;
+      const moving = isMoving(h);
+      if (h.kind === 'rabbit' && (h.y < -0.5 || moving)) {
+        // a hop: squashed on take-off and landing, stretched in the air, nose up then down
+        const air = clamp(-h.y / 22, 0, 1);
+        const rising = h.y < (h.lastY ?? 0);
+        if (air < 0.25) { const q = (0.25 - air) / 0.25; sy = 1 - 0.17 * q; sx = 1 + 0.11 * q; }
+        else { sy = 1 + 0.11 * air; sx = 1 - 0.07 * air; }
+        rot = fwd * (rising ? -0.17 : 0.12) * air;
+      } else if (h.kind === 'hedgehog' && moving) {
+        // a waddle: little steps bounce the body and rock it side to side
+        const ph = h.walkT * 11, c = Math.abs(Math.cos(ph));
+        bottom -= Math.abs(Math.sin(ph)) * 2.6;
+        sy = 1 - 0.06 * c; sx = 1 + 0.045 * c;
+        rot = Math.sin(ph) * 0.05;
+      } else if (h.kind === 'squirrel' && moving) {
+        // a dash: low and long, bounding fast
+        const ph = h.walkT * 18, a = Math.abs(Math.sin(ph));
+        bottom -= a * 5;
+        sx = 1.08 - 0.06 * a; sy = 0.92 + 0.1 * a;
+        rot = fwd * (0.06 + 0.05 * Math.cos(ph));
+      } else {
+        // at rest: breathing, and the squirrel flicks its tail after a dash
+        const br = Math.sin(state.t * 2.3 + h.home * 0.01) * 0.02;
+        sy = 1 + br; sx = 1 - br * 0.5;
+        if (h.kind === 'squirrel' && h.flick) rot = Math.sin(h.flick * 28) * h.flick * 0.12;
+      }
+      if (h.state === 'eat') { // head down, chewing
+        const e = Math.sin(state.t * 13);
+        rot = fwd * (0.07 + 0.05 * e); sy = 1 - 0.04 * Math.max(0, e); sx = 1 + 0.02 * Math.max(0, e);
+      }
+      h.lastY = h.y;
+      drawBody(im, h.x, bottom, h.info.scale, flip, sx, sy, rot);
       if (h.carrying) {
         const mi = img['mushroom_' + h.carrying];
         drawSprite(ctx, mi, h.x - h.dir * 10, bottom - im.height * h.info.scale * 0.55, MUSH_SCALE * 0.5, false, 1, h.dir * 0.4);
       }
     } else {
-      const im = img.bluetit;
-      const flap = h.state === 'eat' ? Math.sin(state.t * 20) * 0.12 : Math.sin(state.t * 14) * 0.06;
-      drawSprite(ctx, im, h.x, h.y + im.height * h.info.scale / 2, h.info.scale, h.dir < 0, 1, flap);
+      const im = img.bluetit, sc = h.info.scale;
+      if (h.state === 'eat') { // perched on the cap: pecking, with a small hop now and then
+        const pk = Math.max(0, Math.sin(state.t * 9));
+        const hop = Math.max(0, Math.sin(state.t * 1.7)) > 0.96 ? 5 : 0;
+        drawBody(im, h.x, h.y + im.height * sc / 2 - hop, sc, h.dir < 0, 1 + 0.03 * pk, 1 - 0.06 * pk, (h.dir < 0 ? -1 : 1) * 0.45 * pk);
+      } else {
+        const wave = Math.sin(h.walkT * 4) * 10; // a gentle wavy flight path
+        drawFlying(im, h.x, h.y + wave, sc, h.dir < 0, state.t * 19 + h.x * 0.01);
+      }
     }
     if (h.state === 'approach' || h.state === 'eat' || h.state === 'swoop') {
       const box = hunterBox(h);
@@ -1712,7 +1830,16 @@
     }
     for (const d of state.decor) {
       if (d.layer !== 1 || !visibleX(d.x)) continue;
-      drawSprite(ctx, img[d.s], d.x, GROUND_Y + 13, d.scale, d.flip, 1, d.robin ? Math.sin(d.peck * Math.PI) * 0.35 : 0);
+      if (d.robin) { // the robin pecks, hops and breathes
+        const k = d.hop > 0 ? 1 - d.hop : 0, air = d.hop > 0 ? Math.sin(k * Math.PI) : 0;
+        const land = d.hop > 0 && k > 0.85 ? (k - 0.85) / 0.15 : 0;
+        const br = Math.sin(state.t * 3 + d.x) * 0.02;
+        const pk = Math.sin(d.peck * Math.PI);
+        drawBody(img.robin, d.x + (d.hopDx || 0) * k, GROUND_Y + 13 - air * 11, d.scale, d.flip,
+          1 + 0.08 * land - 0.04 * air, 1 + br - 0.1 * land + 0.06 * air, (d.flip ? -1 : 1) * 0.35 * pk);
+        continue;
+      }
+      drawSprite(ctx, img[d.s], d.x, GROUND_Y + 13, d.scale, d.flip);
     }
     for (const m of state.mushrooms) if (visibleX(m.x)) drawMushroom(m);
     for (const h of state.hunters) if (h.ground) drawHunter(h);
@@ -1725,7 +1852,7 @@
     if (mode === 'play') drawTrees();
     for (const h of state.hunters) if (!h.ground) drawHunter(h);
     const bt = state.bluetit;
-    if (bt.active) drawSprite(ctx, img.bluetit, bt.x, bt.y, 0.22, bt.dir < 0, 1, Math.sin(state.t * 14) * 0.06);
+    if (bt.active) drawFlying(img.bluetit, bt.x, bt.y, 0.22, bt.dir < 0, state.t * 19);
   }
 
   function drawMushroom(m) {
