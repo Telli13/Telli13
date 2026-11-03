@@ -3046,6 +3046,7 @@
   const ROT_TRADE = { every: 20, water: 2, organic: 3 };
   const PARASITE_KILL_TIME = 60; // s for honey fungus to kill a tree it has reached
   const KIN_COST = 3, NET_STEP = 6, FRONT_EVERY = 0.8, RIVAL_MAX_NODES = 700;
+  const NET_MAX_STRENGTH = 20; // a rival never gets stronger than this, so a sugar stock can beat it
 
   function netAdd(net, x, y, parent) {
     const i = net.nodes.length;
@@ -3191,7 +3192,7 @@
     for (const t of state.trees) { // trees it holds feed it
       if (t.rival !== net) continue;
       t.rivalT = (t.rivalT || 30) - dt;
-      if (t.rivalT <= 0) { t.rivalT = 30; net.strength += 3; }
+      if (t.rivalT <= 0) { t.rivalT = 30; net.strength = Math.min(NET_MAX_STRENGTH, net.strength + 2); }
     }
     const alive = net.nodes.length;
     if (alive > RIVAL_MAX_NODES) return;
@@ -3216,7 +3217,7 @@
     const n = net.nodes[nx];
     for (const r of state.resources) { // eats what it reaches
       if (r.dead || r.fade < 0 || dist(r.x, r.y, n.x, n.y) > r.radius + 6) continue;
-      net.strength += r.amount;
+      net.strength = Math.min(NET_MAX_STRENGTH, net.strength + 1);
       r.dead = true; r.fade = 0; r.connected = false;
       state.fx.push({ kind: 'ring', x: r.x, y: r.y, t: 0, life: 0.8, color: net.info.color });
       if (visibleX(r.x, -100) && state.t - (net.ateMsg || -9) > 6) { net.ateMsg = state.t; msg(TXT.nets.rivalAte, 2.5); }
@@ -3235,8 +3236,10 @@
     net.front = { x: n.x, y: n.y };
     net.frontAt = state.t;
     state.fx.push({ kind: 'bite', x: n.x, y: n.y, t: 0, life: 0.8 });
-    const youWin = mine > 0 && (theirs <= 0 || mine >= theirs);
-    if (mine > 0) state.counts.sugar--;
+    // the threads right by your mushroom's knot are thick and hold; elsewhere the richer side wins
+    const knot = state.nodes[hit.i].depth < GRUB_SAFE_DEPTH;
+    const youWin = knot || (mine > 0 && (theirs <= 0 || mine >= theirs));
+    if (mine > 0 && !knot) state.counts.sugar--;
     if (theirs > 0) net.strength--;
     if (youWin) {
       netKill(net, hit.k);
@@ -3262,7 +3265,7 @@
       t.infest = net;
       t.health -= dt / PARASITE_KILL_TIME;
       net.gainT -= dt;
-      if (net.gainT <= 0) { net.gainT = 10; net.strength++; }
+      if (net.gainT <= 0) { net.gainT = 10; net.strength = Math.min(NET_MAX_STRENGTH, net.strength + 1); }
       if (t.health <= 0) treeDies(t, net);
       return;
     }
@@ -3298,7 +3301,7 @@
     burst(t.x, GROUND_Y - 120, '160,120,80', 30);
     net.biteNode = null;
     net.target = null;
-    net.strength += 5;
+    net.strength = Math.min(NET_MAX_STRENGTH, net.strength + 3);
   }
 
   // rotting log: trades water for organic matter once your thread touches it
@@ -3441,10 +3444,11 @@
 
   // ---------------------------------------------------------------- loop & input
   let last = 0;
+  let timeScale = Math.max(1, Math.min(16, Number(new URLSearchParams(location.search).get('speed')) || 1));
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000 || 0);
     last = now;
-    update(dt);
+    for (let k = 0; k < timeScale; k++) update(dt); // timeScale > 1 only for automated tests
     render();
     requestAnimationFrame(frame);
   }
@@ -3646,5 +3650,10 @@
     get state() { return state; }, get mode() { return mode; }, cam,
     startLevel, growToward, centerOn, startStory, get story() { return story; }, LEVELS, GROUND_Y, SOIL_TOP,
     play() { mode = 'play'; },
+    // for automated play-tests
+    get timeScale() { return timeScale; }, set timeScale(v) { timeScale = Math.max(1, Math.min(16, v | 0)); },
+    scareHunter, hitPest, scareAnt, releaseSpores, sporeSpotProblem, mergeKin, callRain,
+    growthTarget, canSpore, goalLines, nearestNode, openMenu,
+    get buttons() { return buttons; },
   };
 })();
