@@ -5,6 +5,7 @@
  * stock grows mushrooms on the surface through 6 stages.
  *
  * v2: levels, dangers (grubs, hedgehog, rabbit, squirrel), spore reproduction.
+ * v9: neighbouring fungi — golden kin to merge with, a purple rival to fight at the front.
  * v8: trees — mycorrhiza unions pay sugar and raise their own kind of children; fairy rings.
  * v7: day and night — at night pests swarm, hunters attack more and shade beetles come up.
  * v6: rain — clouds gather from water; warm rain feeds the soil, a storm washes pests out.
@@ -81,7 +82,7 @@
       goal: { ripeNow: 1 },
       seed: 11, ww: 2400, wh: 1250, rocks: 12, pools: 1, cap: 18,
       plan: { water: 5, organic: 5, mineral: 4, sugar: 4 },
-      maxMushrooms: 6, hunters: [], pests: null, ants: null, par: 100,
+      maxMushrooms: 6, hunters: [], pests: null, ants: null, par: 100, neighbors: [],
     },
     {
       name: 'Дети',
@@ -89,7 +90,7 @@
       goal: { children: 2 },
       seed: 22, ww: 3000, wh: 1400, rocks: 17, pools: 2, cap: 20,
       plan: { water: 7, organic: 6, mineral: 5, sugar: 4 },
-      maxMushrooms: 8, hunters: ['rabbit'], attackEvery: [18, 26],
+      maxMushrooms: 8, hunters: ['rabbit'], attackEvery: [18, 26], neighbors: ['kin'],
       pests: { kinds: ['woodlouse'], every: [22, 30], max: 1 }, ants: null, par: 220,
     },
     {
@@ -98,7 +99,7 @@
       goal: { roots: 2, ripeNow: 2 },
       seed: 33, ww: 3400, wh: 1500, rocks: 20, pools: 2, cap: 20,
       plan: { water: 7, organic: 6, mineral: 6, sugar: 5 },
-      maxMushrooms: 9, hunters: ['rabbit', 'bird'], attackEvery: [16, 24],
+      maxMushrooms: 9, hunters: ['rabbit', 'bird'], attackEvery: [16, 24], neighbors: ['kin', 'rival'],
       pests: { kinds: ['woodlouse', 'worm'], every: [18, 26], max: 2 }, ants: null, par: 300,
     },
     {
@@ -107,7 +108,7 @@
       goal: { children: 3 },
       seed: 44, ww: 3400, wh: 1600, rocks: 22, pools: 2, cap: 20,
       plan: { water: 7, organic: 7, mineral: 6, sugar: 5 },
-      maxMushrooms: 9, hunters: ['rabbit'], attackEvery: [22, 30],
+      maxMushrooms: 9, hunters: ['rabbit'], attackEvery: [22, 30], neighbors: ['rival'],
       pests: { kinds: ['grub', 'worm', 'woodlouse'], every: [12, 18], max: 3 }, ants: { every: [16, 24], max: 2 }, par: 320,
     },
     {
@@ -116,7 +117,7 @@
       goal: { mushrooms: 5, ripeNow: 2 },
       seed: 55, ww: 4000, wh: 1700, rocks: 26, pools: 2, cap: 22,
       plan: { water: 8, organic: 7, mineral: 7, sugar: 6 },
-      maxMushrooms: 10, hunters: ['hedgehog', 'rabbit', 'bird'], attackEvery: [12, 18],
+      maxMushrooms: 10, hunters: ['hedgehog', 'rabbit', 'bird'], attackEvery: [12, 18], neighbors: ['rival', 'kin'],
       pests: { kinds: ['grub', 'worm', 'beetle'], every: [14, 20], max: 2 }, ants: null, par: 420,
     },
     {
@@ -125,7 +126,7 @@
       goal: { ripeNow: 3, children: 2 },
       seed: 66, ww: 4000, wh: 1800, rocks: 34, pools: 2, cap: 18,
       plan: { water: 7, organic: 6, mineral: 6, sugar: 5 },
-      maxMushrooms: 10, hunters: ['hedgehog', 'rabbit', 'squirrel', 'bird'], attackEvery: [10, 15],
+      maxMushrooms: 10, hunters: ['hedgehog', 'rabbit', 'squirrel', 'bird'], attackEvery: [10, 15], neighbors: ['rival', 'rival'],
       pests: { kinds: ['grub', 'worm', 'woodlouse', 'beetle'], every: [10, 15], max: 3 }, ants: { every: [18, 26], max: 2 }, par: 500,
     },
   ];
@@ -273,7 +274,7 @@
       tutorial: li === 0 && !progress.tutorialDone ? { step: 0, t: 0, doneAt: null } : null,
       clouds: 0, rain: null, cloudsShown: false,
       clock: 5, dark: 0, phase: 'day', shadeTimer: 3,
-      trees: [], ringT: 5, kidShown: {}, ringShown: false,
+      trees: [], ringT: 5, kidShown: {}, ringShown: false, nets: [],
       grewOnce: false, fedOnce: false, hitRock: false,
     };
     makeDecor();
@@ -281,6 +282,7 @@
     makeRocks(L.rocks);
     newColony(startX, null);
     makeResources(L);
+    makeNets(L);
     makeCritters();
     makeHunters(L);
     centerOn(startX, GROUND_Y + 120);
@@ -1718,6 +1720,7 @@
       drawSprite(ctx, img[d.s], d.x, GROUND_Y + 17, d.scale, d.flip);
     }
     for (const m of state.mushrooms) if (visibleX(m.x)) drawMushroomLabel(m);
+    drawNetMushrooms();
     if (mode === 'play') drawTrees();
     for (const h of state.hunters) if (!h.ground) drawHunter(h);
     const bt = state.bluetit;
@@ -2016,6 +2019,11 @@
       const blink = Math.sin(state.t * 10) > 0 ? 3.5 : 2.2;
       ctx.beginPath(); ctx.arc(R.x + th.x * sx, R.y + th.y * sy, blink, 0, Math.PI * 2); ctx.fill();
     }
+    for (const net of state.nets) { // neighbouring networks in their colour
+      if (net.dead) continue;
+      ctx.fillStyle = `rgb(${net.info.color})`;
+      for (let i = 0; i < net.nodes.length; i += 3) { const n = net.nodes[i]; if (!n.dead) ctx.fillRect(R.x + n.x * sx, R.y + n.y * sy, 1.4, 1.4); }
+    }
     ctx.strokeStyle = '#fff';
     ctx.lineWidth = 1.5;
     ctx.strokeRect(R.x + cam.x * sx, R.y + cam.y * sy, W * sx, H * sy);
@@ -2031,6 +2039,7 @@
     }
     for (const g of state.pests) if (g.state !== 'flee') out.push({ x: g.x, y: g.y });
     for (const a of state.ants) if (a.state !== 'flee') out.push({ x: a.x, y: a.y });
+    for (const net of state.nets) if (!net.dead && net.front && state.t - net.frontAt < 3) out.push({ x: net.front.x, y: net.front.y });
     return out;
   }
 
@@ -2836,6 +2845,7 @@
     birch: 'hue-rotate(-18deg) saturate(0.5) brightness(0.82)',   // brown cap, like a birch bolete
     oak: 'sepia(0.8) saturate(0.6) brightness(1.02)',              // pale brown, like a porcini
     spruce: 'hue-rotate(16deg) saturate(1.3) brightness(1.06)',    // bright orange, like a saffron milk cap
+    kin: 'hue-rotate(38deg) saturate(1.25) brightness(1.12)',       // the golden kin colony after a merge
   };
   const PAY_EVERY = 30, TREE_REACH = 120, KID_EVERY = 9, RING_EVERY = 5, RING_MIN = 220;
   const tintCache = new Map();
@@ -2873,6 +2883,10 @@
     if (n.y > GROUND_Y + 240) return;
     for (const t of state.trees) {
       if (t.allied || t.dead || Math.abs(n.x - t.x) > TREE_REACH) continue;
+      if (t.rival && !t.rival.dead) {
+        if (state.t - (t.takenMsg || -9) > 5) { t.takenMsg = state.t; msg(TXT.nets.treeTaken.replace('{tree}', TXT.forest.trees[t.kind]), 3); }
+        continue;
+      }
       t.allied = true;
       t.node = idx;
       t.root = n.root;
@@ -3005,6 +3019,278 @@
     }
   }
 
+  // ---------------------------------------------------------------- neighbouring fungi
+  // Other mycelia live in the same soil, each with its own network and mushroom.
+  //   kin   — the same species: once a thread touches it, a click on its mushroom
+  //           and a little sugar merge it into yours (network, mushroom and stash);
+  //   rival — another species: grows by itself toward resources, trees and your
+  //           threads; where the two networks touch there is a front — each clash
+  //           costs both sides (your sugar, its strength) and the poorer side loses
+  //           that branch. Cut its root and it is gone.
+  const NET_KINDS = {
+    kin:   { color: '190,255,120', filter: 'hue-rotate(38deg) saturate(1.25) brightness(1.12)', grows: false },
+    rival: { color: '190,110,255', filter: 'hue-rotate(250deg) saturate(1.35) brightness(0.95)', grows: true },
+  };
+  const KIN_COST = 3, NET_STEP = 6, FRONT_EVERY = 0.8, RIVAL_MAX_NODES = 700;
+
+  function netAdd(net, x, y, parent) {
+    const i = net.nodes.length;
+    net.nodes.push({ x, y, parent, children: [], dead: false });
+    if (parent >= 0) net.nodes[parent].children.push(i);
+    return i;
+  }
+
+  function netStep(net, from, tx, ty, wander = 0.5) {
+    const n = net.nodes[from];
+    const a0 = Math.atan2(ty - n.y, tx - n.x) + rr(-wander, wander);
+    for (const off of [0, 0.4, -0.4, 0.8, -0.8, 1.2, -1.2]) {
+      const a = a0 + off;
+      const x = n.x + Math.cos(a) * NET_STEP, y = n.y + Math.sin(a) * NET_STEP;
+      if (!blocked(x, y)) return netAdd(net, x, y, from);
+    }
+    return -1;
+  }
+
+  function makeNets(L) {
+    state.nets = [];
+    for (const kind of L.neighbors || []) {
+      let x = null;
+      for (let k = 0; k < 60 && x == null; k++) {
+        const cx = rr(200, WW - 200);
+        if (Math.abs(cx - state.startX) < 800) continue;
+        if (state.nets.some((o) => Math.abs(o.x - cx) < 700)) continue;
+        if (rockHit(cx, GROUND_Y + ROOT_DY, 30)) continue;
+        x = cx;
+      }
+      if (x == null) continue;
+      const net = { kind, info: NET_KINDS[kind], x, nodes: [], tips: [], strength: kind === 'rival' ? 4 : 0, growT: 1, frontT: 0,
+        contact: null, dead: false, seen: false, front: null, frontAt: -9, mushStage: kind === 'kin' ? 3 : 2, trees: [] };
+      netAdd(net, x, GROUND_Y + ROOT_DY, -1);
+      for (let b = 0; b < 5; b++) { // a small network to start with
+        const a = rr(0.35, Math.PI - 0.35), d = rr(150, 260);
+        const tx = x + Math.cos(a) * d * 1.4, ty = GROUND_Y + ROOT_DY + Math.sin(a) * d;
+        let at = 0;
+        for (let s = 0; s < d / NET_STEP && at >= 0; s++) { const nx = netStep(net, at, tx, ty, 0.6); if (nx < 0) break; at = nx; }
+        if (at > 0) net.tips.push(at);
+      }
+      state.nets.push(net);
+    }
+  }
+
+  function netKill(net, i) {
+    const stack = [i];
+    let count = 0;
+    while (stack.length) {
+      const k = stack.pop();
+      const n = net.nodes[k];
+      if (n.dead) continue;
+      n.dead = true;
+      count++;
+      if (n.parent >= 0) state.withering.push({ a: net.nodes[n.parent], b: { x: n.x, y: n.y, w: 1.4 }, t: 0 });
+      for (const c of n.children) stack.push(c);
+    }
+    net.tips = net.tips.filter((t) => !net.nodes[t].dead);
+    for (const t of state.trees) if (t.rival === net && net.nodes[t.rivalNode].dead) { t.rival = null; }
+    if (net.nodes[0].dead && !net.dead) {
+      net.dead = true;
+      state.counts.sugar += 4;
+      burst(net.x, GROUND_Y - 30, NET_KINDS.rival.color, 24);
+      msg(TXT.nets.rivalDead, 4);
+    }
+    return count;
+  }
+
+  function rivalTarget(net, tip) {
+    const n = net.nodes[tip];
+    let best = null, bd = 900;
+    for (const r of state.resources) {
+      if (r.dead || r.fade < 0) continue;
+      const d = dist(r.x, r.y, n.x, n.y);
+      if (d < bd) { bd = d; best = { x: r.x, y: r.y }; }
+    }
+    for (const t of state.trees) {
+      if (t.allied || t.rival || t.dead) continue;
+      const d = dist(t.x, GROUND_Y + 110, n.x, n.y);
+      if (d < bd) { bd = d; best = { x: t.x, y: GROUND_Y + 110 }; }
+    }
+    if (net.strength >= 6 && rand() < 0.3) { // grows into your network on purpose
+      const { i, d } = nearestNode(n.x, n.y);
+      if (i >= 0 && d < 700) best = { x: state.nodes[i].x, y: state.nodes[i].y };
+    }
+    return best || { x: n.x + rr(-200, 200), y: clamp(n.y + rr(-60, 160), SOIL_TOP + 20, WH - 30) };
+  }
+
+  function updateNets(dt) {
+    for (const net of state.nets) {
+      if (net.dead) continue;
+      if (!net.seen && net.x > cam.x + 100 && net.x < cam.x + W - 100) {
+        net.seen = true;
+        msg(net.kind === 'kin' ? TXT.nets.seenKin : TXT.nets.seenRival, 4);
+      }
+      if (net.kind === 'rival') updateRival(net, dt);
+      // contacts with your network
+      net.frontT -= dt;
+      if (net.frontT > 0) continue;
+      net.frontT = FRONT_EVERY;
+      let hit = null;
+      for (let k = 0; k < net.nodes.length; k += 2) {
+        const n = net.nodes[k];
+        if (n.dead) continue;
+        const { i, d } = nearestNode(n.x, n.y);
+        if (i >= 0 && d < 12) { hit = { k, i }; break; }
+      }
+      if (!hit) continue;
+      if (net.kind === 'kin') {
+        if (!net.contact) { net.contact = hit; msg(TXT.nets.contactKin.replace('{n}', KIN_COST), 4); }
+        continue;
+      }
+      clash(net, hit);
+    }
+  }
+
+  function updateRival(net, dt) {
+    net.mushStage = clamp(2 + Math.floor(net.strength / 5), 2, 6);
+    for (const t of state.trees) { // trees it holds feed it
+      if (t.rival !== net) continue;
+      t.rivalT = (t.rivalT || 30) - dt;
+      if (t.rivalT <= 0) { t.rivalT = 30; net.strength += 3; }
+    }
+    const alive = net.nodes.length;
+    if (alive > RIVAL_MAX_NODES) return;
+    net.growT -= dt;
+    if (net.growT > 0) return;
+    net.growT = Math.max(0.12, 0.35 - net.strength * 0.006);
+    const want = Math.min(5, 2 + Math.floor(net.strength / 8));
+    while (net.tips.length < want) {
+      const live = net.nodes.map((n, i) => (n.dead ? -1 : i)).filter((i) => i >= 0);
+      if (!live.length) return;
+      net.tips.push(pick(live));
+    }
+    const k = Math.floor(rand() * net.tips.length);
+    const tip = net.tips[k];
+    if (!net.tipGoal) net.tipGoal = {};
+    let goal = net.tipGoal[tip];
+    if (!goal || rand() < 0.08) goal = rivalTarget(net, tip);
+    const nx = netStep(net, tip, goal.x, goal.y);
+    if (nx < 0) { net.tips.splice(k, 1); return; }
+    net.tips[k] = nx;
+    net.tipGoal[nx] = goal;
+    const n = net.nodes[nx];
+    for (const r of state.resources) { // eats what it reaches
+      if (r.dead || r.fade < 0 || dist(r.x, r.y, n.x, n.y) > r.radius + 6) continue;
+      net.strength += r.amount;
+      r.dead = true; r.fade = 0; r.connected = false;
+      state.fx.push({ kind: 'ring', x: r.x, y: r.y, t: 0, life: 0.8, color: net.info.color });
+      if (visibleX(r.x, -100) && state.t - (net.ateMsg || -9) > 6) { net.ateMsg = state.t; msg(TXT.nets.rivalAte, 2.5); }
+    }
+    for (const t of state.trees) { // and takes trees nobody holds
+      if (t.allied || t.rival || Math.abs(n.x - t.x) > TREE_REACH || n.y > GROUND_Y + 240) continue;
+      t.rival = net; t.rivalNode = nx; t.rivalT = 20;
+      msg(TXT.nets.rivalTree.replace('{tree}', TXT.forest.trees[t.kind]), 3.5);
+    }
+  }
+
+  // where your thread meets a rival thread: each side pays, the poorer side loses the branch
+  function clash(net, hit) {
+    const mine = state.counts.sugar, theirs = net.strength;
+    const n = net.nodes[hit.k];
+    net.front = { x: n.x, y: n.y };
+    net.frontAt = state.t;
+    state.fx.push({ kind: 'bite', x: n.x, y: n.y, t: 0, life: 0.8 });
+    const youWin = mine > 0 && (theirs <= 0 || mine >= theirs);
+    if (mine > 0) state.counts.sugar--;
+    if (theirs > 0) net.strength--;
+    if (youWin) {
+      netKill(net, hit.k);
+      if (state.t - (net.frontMsg || -9) > 3) { net.frontMsg = state.t; msg(TXT.nets.frontWin, 2.2); }
+    } else {
+      killSubtree(hit.i);
+      if (state.t - (net.frontMsg || -9) > 3) { net.frontMsg = state.t; msg(mine > 0 ? TXT.nets.frontLose : TXT.nets.frontNoSugar, 2.5); }
+    }
+  }
+
+  function netMushBox(net) {
+    const im = img['mushroom_' + net.mushStage];
+    const w = im.width * MUSH_SCALE, h = im.height * MUSH_SCALE;
+    return { x: net.x - w / 2, y: GROUND_Y + 14 - h, w, h };
+  }
+
+  function mergeKin(net) {
+    if (net.contact && state.nodes[net.contact.i].dead) net.contact = null; // the touching thread was lost
+    if (!net.contact) { msg(TXT.nets.reachKin, 2.5); return; }
+    if (state.counts.sugar < KIN_COST) { msg(TXT.nets.mergeNeed.replace('{n}', KIN_COST), 2.5); return; }
+    state.counts.sugar -= KIN_COST;
+    // walk the kin network from the touching node and regrow it as yours
+    const map = new Map();
+    const start = net.contact.k;
+    map.set(start, addNode(net.nodes[start].x, net.nodes[start].y, net.contact.i, 2));
+    const queue = [start];
+    while (queue.length) {
+      const v = queue.shift();
+      const nv = net.nodes[v];
+      const near = [...nv.children];
+      if (nv.parent >= 0) near.push(nv.parent);
+      for (const u of near) {
+        if (map.has(u) || net.nodes[u].dead) continue;
+        map.set(u, addNode(net.nodes[u].x, net.nodes[u].y, map.get(v), 2));
+        queue.push(u);
+      }
+    }
+    const root = state.nodes[net.contact.i].root;
+    const kid = { x: net.x, node: map.get(0), root, mother: motherOf(root), stage: net.mushStage, prevStage: 0, anim: 0, born: state.t, species: 'kin' };
+    state.mushrooms.push(kid);
+    state.counts.water += 3; state.counts.organic += 3; state.counts.mineral += 2;
+    net.dead = true;
+    net.merged = true;
+    burst(net.x, GROUND_Y - 40, net.info.color, 26);
+    msg(TXT.nets.merged, 4);
+  }
+
+  function drawNets() {
+    const v = view();
+    for (const net of state.nets) {
+      if (net.dead) continue;
+      const c = net.info.color;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.lineCap = 'round';
+      const path = () => {
+        ctx.beginPath();
+        for (const n of net.nodes) {
+          if (n.dead || n.parent < 0) continue;
+          if (n.x < v.x0 || n.x > v.x1 || n.y < v.y0 || n.y > v.y1) continue;
+          const p = net.nodes[n.parent];
+          ctx.moveTo(p.x, p.y); ctx.lineTo(n.x, n.y);
+        }
+      };
+      path();
+      ctx.strokeStyle = `rgba(${c},0.16)`; ctx.lineWidth = 8;
+      ctx.shadowColor = `rgba(${c},0.9)`; ctx.shadowBlur = 12 * RS;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = `rgba(${c},0.85)`; ctx.lineWidth = 1.6;
+      ctx.stroke();
+      glowDot(net.x, GROUND_Y + ROOT_DY, 26 + Math.sin(state.t * 2 + net.x) * 4, c, 0.5);
+      if (net.front && state.t - net.frontAt < 1.5) glowDot(net.front.x, net.front.y, 30, '255,80,60', 0.6 * (1 - (state.t - net.frontAt) / 1.5));
+      ctx.restore();
+    }
+  }
+
+  function drawNetMushrooms() {
+    for (const net of state.nets) {
+      if (net.dead || !visibleX(net.x)) continue;
+      const im = tinted('mushroom_' + net.mushStage, net.info.filter);
+      drawSprite(ctx, im, net.x, GROUND_Y + 14, MUSH_SCALE, false, 1, Math.sin(state.t * 1.1 + net.x) * 0.012);
+      const box = netMushBox(net);
+      const name = TXT.nets.names[net.kind];
+      const sub = net.kind === 'kin'
+        ? (net.contact ? TXT.nets.kinClick.replace('{n}', KIN_COST) : TXT.nets.kinReach)
+        : TXT.nets.rivalPower.replace('{n}', net.strength);
+      text(name, net.x, box.y - 30, 14, net.kind === 'kin' ? '#ffe38a' : '#d9b8ff', 'center');
+      text(sub, net.x, box.y - 12, 12, 'rgba(247,232,198,0.85)', 'center', 600);
+    }
+  }
+
   function render() {
     if (mode === 'story') { renderStory(); return; }
     buttons = [];
@@ -3016,6 +3302,7 @@
     drawUnderground();
     drawResources();
     drawMycelium();
+    drawNets();
     drawPests();
     drawSurface();
     drawSporeClouds();
@@ -3080,6 +3367,7 @@
     updateRain(dt);
     updateDayNight(dt);
     updateTrees(dt);
+    updateNets(dt);
     updateAnts(dt);
     respawn(dt);
     if (state.needRebuild) { state.needRebuild = false; rebuildMycelium(); }
@@ -3101,6 +3389,7 @@
       if (h.threat && ['approach', 'eat', 'idle', 'return', 'swoop'].includes(h.state) && inBox(p.wx, p.wy, hunterBox(h))) return { kind: 'hunter', h };
     }
     for (const g of state.pests) if (g.state !== 'flee' && dist(p.wx, p.wy, g.x, g.y) < g.info.hit) return { kind: 'pest', g };
+    for (const net of state.nets) if (net.kind === 'kin' && !net.dead && inBox(p.wx, p.wy, netMushBox(net))) return { kind: 'kin', net };
     for (const a of state.ants) if (a.state !== 'flee' && dist(p.wx, p.wy, a.x, a.y) < 36) return { kind: 'ant', a };
     for (const m of state.mushrooms) if (canSpore(m) && inBox(p.wx, p.wy, mushroomBox(m))) return { kind: 'mushroom', m };
     return null;
@@ -3132,6 +3421,7 @@
     }
     if (hit && hit.kind === 'hunter') { scareHunter(hit.h); return; }
     if (hit && hit.kind === 'pest') { hitPest(hit.g); return; }
+    if (hit && hit.kind === 'kin') { mergeKin(hit.net); return; }
     if (hit && hit.kind === 'ant') { scareAnt(hit.a); return; }
     if (hit && hit.kind === 'mushroom') { state.sporeFrom = hit.m; msg('Кликните по поверхности, куда полетят споры', 3); return; }
     if (p.wy < SOIL_TOP - 6) { state.drag = { sx: p.sx, sy: p.sy, cx: cam.x, cy: cam.y }; return; } // drag the sky to pan
