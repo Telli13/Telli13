@@ -5,6 +5,7 @@
  * stock grows mushrooms on the surface through 6 stages.
  *
  * v2: levels, dangers (grubs, hedgehog, rabbit, squirrel), spore reproduction.
+ * v8: trees — mycorrhiza unions pay sugar and raise their own kind of children; fairy rings.
  * v7: day and night — at night pests swarm, hunters attack more and shade beetles come up.
  * v6: rain — clouds gather from water; warm rain feeds the soil, a storm washes pests out.
  * v5: a 3-screen intro on first launch and first-play tips (texts in src/texts.js).
@@ -80,7 +81,7 @@
       goal: { ripeNow: 1 },
       seed: 11, ww: 2400, wh: 1250, rocks: 12, pools: 1, cap: 18,
       plan: { water: 5, organic: 5, mineral: 4, sugar: 4 },
-      maxMushrooms: 1, hunters: [], pests: null, ants: null, par: 100,
+      maxMushrooms: 6, hunters: [], pests: null, ants: null, par: 100,
     },
     {
       name: 'Дети',
@@ -88,7 +89,7 @@
       goal: { children: 2 },
       seed: 22, ww: 3000, wh: 1400, rocks: 17, pools: 2, cap: 20,
       plan: { water: 7, organic: 6, mineral: 5, sugar: 4 },
-      maxMushrooms: 4, hunters: ['rabbit'], attackEvery: [18, 26],
+      maxMushrooms: 8, hunters: ['rabbit'], attackEvery: [18, 26],
       pests: { kinds: ['woodlouse'], every: [22, 30], max: 1 }, ants: null, par: 220,
     },
     {
@@ -97,7 +98,7 @@
       goal: { roots: 2, ripeNow: 2 },
       seed: 33, ww: 3400, wh: 1500, rocks: 20, pools: 2, cap: 20,
       plan: { water: 7, organic: 6, mineral: 6, sugar: 5 },
-      maxMushrooms: 5, hunters: ['rabbit', 'bird'], attackEvery: [16, 24],
+      maxMushrooms: 9, hunters: ['rabbit', 'bird'], attackEvery: [16, 24],
       pests: { kinds: ['woodlouse', 'worm'], every: [18, 26], max: 2 }, ants: null, par: 300,
     },
     {
@@ -106,7 +107,7 @@
       goal: { children: 3 },
       seed: 44, ww: 3400, wh: 1600, rocks: 22, pools: 2, cap: 20,
       plan: { water: 7, organic: 7, mineral: 6, sugar: 5 },
-      maxMushrooms: 5, hunters: ['rabbit'], attackEvery: [22, 30],
+      maxMushrooms: 9, hunters: ['rabbit'], attackEvery: [22, 30],
       pests: { kinds: ['grub', 'worm', 'woodlouse'], every: [12, 18], max: 3 }, ants: { every: [16, 24], max: 2 }, par: 320,
     },
     {
@@ -115,7 +116,7 @@
       goal: { mushrooms: 5, ripeNow: 2 },
       seed: 55, ww: 4000, wh: 1700, rocks: 26, pools: 2, cap: 22,
       plan: { water: 8, organic: 7, mineral: 7, sugar: 6 },
-      maxMushrooms: 6, hunters: ['hedgehog', 'rabbit', 'bird'], attackEvery: [12, 18],
+      maxMushrooms: 10, hunters: ['hedgehog', 'rabbit', 'bird'], attackEvery: [12, 18],
       pests: { kinds: ['grub', 'worm', 'beetle'], every: [14, 20], max: 2 }, ants: null, par: 420,
     },
     {
@@ -124,7 +125,7 @@
       goal: { ripeNow: 3, children: 2 },
       seed: 66, ww: 4000, wh: 1800, rocks: 34, pools: 2, cap: 18,
       plan: { water: 7, organic: 6, mineral: 6, sugar: 5 },
-      maxMushrooms: 6, hunters: ['hedgehog', 'rabbit', 'squirrel', 'bird'], attackEvery: [10, 15],
+      maxMushrooms: 10, hunters: ['hedgehog', 'rabbit', 'squirrel', 'bird'], attackEvery: [10, 15],
       pests: { kinds: ['grub', 'worm', 'woodlouse', 'beetle'], every: [10, 15], max: 3 }, ants: { every: [18, 26], max: 2 }, par: 500,
     },
   ];
@@ -272,9 +273,11 @@
       tutorial: li === 0 && !progress.tutorialDone ? { step: 0, t: 0, doneAt: null } : null,
       clouds: 0, rain: null, cloudsShown: false,
       clock: 5, dark: 0, phase: 'day', shadeTimer: 3,
+      trees: [], ringT: 5, kidShown: {}, ringShown: false,
       grewOnce: false, fedOnce: false, hitRock: false,
     };
     makeDecor();
+    makeTrees();
     makeRocks(L.rocks);
     newColony(startX, null);
     makeResources(L);
@@ -435,13 +438,14 @@
   function addNode(x, y, parent, w) {
     const idx = state.nodes.length;
     const p = parent >= 0 ? state.nodes[parent] : null;
-    state.nodes.push({ x, y, parent, w, depth: p ? p.depth + 1 : 0, children: [], dead: false });
+    state.nodes.push({ x, y, parent, w, depth: p ? p.depth + 1 : 0, children: [], dead: false, root: p ? p.root : idx });
     if (p) p.children.push(idx);
     const k = cellKey(x, y);
     if (!grid.has(k)) grid.set(k, []);
     grid.get(k).push(idx);
     if (p) drawSegment(p, state.nodes[idx]);
     touchResources(idx);
+    if (state.trees) checkTrees(idx);
     return idx;
   }
 
@@ -605,6 +609,7 @@
         msg('Нить к грибу-ребёнку перегрызена — он погиб', 3);
       }
     }
+    for (const t of state.trees) if (t.allied && killed.has(t.node)) breakUnion(t, TXT.forest.cut);
     state.needRebuild = true;
     return killed.size;
   }
@@ -668,7 +673,7 @@
   function growthTarget() {
     let best = null;
     for (const m of state.mushrooms) {
-      if (m.stage >= RIPE) continue;
+      if (m.stage >= RIPE || (m.tree && !m.tree.allied)) continue; // a broken union stops its children
       if (!best || m.stage > best.stage) best = m;
     }
     return best;
@@ -1713,6 +1718,7 @@
       drawSprite(ctx, img[d.s], d.x, GROUND_Y + 17, d.scale, d.flip);
     }
     for (const m of state.mushrooms) if (visibleX(m.x)) drawMushroomLabel(m);
+    if (mode === 'play') drawTrees();
     for (const h of state.hunters) if (!h.ground) drawHunter(h);
     const bt = state.bluetit;
     if (bt.active) drawSprite(ctx, img.bluetit, bt.x, bt.y, 0.22, bt.dir < 0, 1, Math.sin(state.t * 14) * 0.06);
@@ -1736,13 +1742,13 @@
       glowDot(m.x, base - 120, 120 + Math.sin(t * 3) * 14, '220,170,255', state.sporeFrom === m ? 0.45 : 0.25);
       ctx.restore();
     }
-    if (k < 1 && m.prevStage > 0) drawSprite(ctx, img['mushroom_' + m.prevStage], m.x, base, MUSH_SCALE, false, 1 - k, sway);
+    if (k < 1 && m.prevStage > 0) drawSprite(ctx, mushImg(m, m.prevStage), m.x, base, MUSH_SCALE, false, 1 - k, sway);
     const s = MUSH_SCALE * (k < 1 ? 0.6 + 0.4 * easeOutBack(k) : 1);
     const squash = k < 1 ? 1 + Math.sin(k * Math.PI) * 0.06 : 1;
     ctx.save();
     ctx.translate(m.x, base);
     ctx.scale(squash, 1 / squash);
-    drawSprite(ctx, img['mushroom_' + m.stage], 0, 0, s, false, Math.min(1, k * 2 + 0.2), sway);
+    drawSprite(ctx, mushImg(m, m.stage), 0, 0, s, false, Math.min(1, k * 2 + 0.2), sway);
     ctx.restore();
     if (m.stage === RIPE) {
       ctx.save();
@@ -1766,7 +1772,11 @@
       ctx.beginPath(); ctx.arc(m.x - 25 + i * 10, y, 3.6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     }
     ctx.restore();
-    if (m.mother) text('ребёнок', m.x, y - 15, 12, 'rgba(255,240,210,0.85)', 'center', 600);
+    if (m.mother) {
+      const nm = m.species ? TXT.forest.species[m.species] : 'ребёнок';
+      const stopped = m.tree && !m.tree.allied;
+      text(stopped ? nm + ' · ' + TXT.forest.stopped : nm, m.x, y - 15, 12, stopped ? '#ffb39a' : 'rgba(255,240,210,0.85)', 'center', 600);
+    }
     if (canSpore(m) && mode === 'play') {
       ctx.save(); ctx.globalAlpha = 0.75 + 0.25 * Math.sin(state.t * 4);
       text(state.sporeFrom === m ? 'Куда? Кликните по поверхности' : 'Споры готовы!', m.x, y - 20, 16, '#e9d2ff', 'center');
@@ -2811,6 +2821,190 @@
     text(TXT.daynight.names[d.key] + ' ' + fmtTime(d.left), cx, cy + r + 18, 13, d.key === 'night' ? '#b9c4ff' : '#f7e8c6', 'center', 700);
   }
 
+  // ---------------------------------------------------------------- trees: mycorrhiza
+  // A thread that reaches a tree's roots makes a union: every 30 s the tree takes
+  // water/minerals from the stock and pays sugar back along the thread. While the
+  // union holds, the tree raises children of its own kind around its trunk.
+  // A ripe-ish mother also sprouts a "fairy ring": children appear by themselves
+  // wherever her threads come up to the grass, farther and farther out.
+  const TREE_KINDS = {
+    birch:  { wants: { water: 2 }, gives: 2, kids: 2 },
+    oak:    { wants: { mineral: 2 }, gives: 3, kids: 3 },
+    spruce: { wants: { water: 1, mineral: 1 }, gives: 2, kids: 2 },
+  };
+  const SPECIES_FILTER = {
+    birch: 'hue-rotate(-18deg) saturate(0.5) brightness(0.82)',   // brown cap, like a birch bolete
+    oak: 'sepia(0.8) saturate(0.6) brightness(1.02)',              // pale brown, like a porcini
+    spruce: 'hue-rotate(16deg) saturate(1.3) brightness(1.06)',    // bright orange, like a saffron milk cap
+  };
+  const PAY_EVERY = 30, TREE_REACH = 120, KID_EVERY = 9, RING_EVERY = 5, RING_MIN = 220;
+  const tintCache = new Map();
+
+  function tinted(name, filter) {
+    const key = name + '|' + filter;
+    let c = tintCache.get(key);
+    if (!c) {
+      const im = img[name];
+      c = makeCanvas(im.width, im.height);
+      const g = c.getContext('2d');
+      g.filter = filter; // browsers without canvas filters just draw it untinted
+      g.drawImage(im, 0, 0);
+      tintCache.set(key, c);
+    }
+    return c;
+  }
+
+  function mushImg(m, stage) {
+    const name = 'mushroom_' + stage;
+    const f = m.species && SPECIES_FILTER[m.species];
+    return f ? tinted(name, f) : img[name];
+  }
+
+  function makeTrees() {
+    state.trees = state.decor.filter((d) => d.layer === 0).map((d) => ({
+      d, kind: d.s, info: TREE_KINDS[d.s], x: d.x,
+      allied: false, node: -1, root: -1, trust: 1, payT: 0, kidT: 0, side: 1, kids: [],
+      sugarQ: 0, qT: 0, paidOnce: false,
+    }));
+  }
+
+  function checkTrees(idx) {
+    const n = state.nodes[idx];
+    if (n.y > GROUND_Y + 240) return;
+    for (const t of state.trees) {
+      if (t.allied || t.dead || Math.abs(n.x - t.x) > TREE_REACH) continue;
+      t.allied = true;
+      t.node = idx;
+      t.root = n.root;
+      t.trust = 1;
+      t.payT = 8;
+      t.kidT = 2;
+      state.fx.push({ kind: 'ring', x: t.x, y: GROUND_Y + 90, t: 0, life: 1.2, color: '170,255,140' });
+      msg(TXT.forest.union.replace('{tree}', TXT.forest.trees[t.kind]).replace('{kids}', TXT.forest.speciesMany[t.kind]), 4);
+    }
+  }
+
+  function breakUnion(t, why) {
+    if (!t.allied) return;
+    t.allied = false;
+    t.node = -1;
+    msg(why.replace('{tree}', TXT.forest.trees[t.kind]), 3.5);
+  }
+
+  function updateTrees(dt) {
+    for (const t of state.trees) {
+      if (!t.allied) continue;
+      if (state.nodes[t.node].dead) { breakUnion(t, TXT.forest.cut); continue; }
+      // sugar flows down the thread a unit at a time
+      t.qT -= dt;
+      if (t.sugarQ > 0 && t.qT <= 0) {
+        t.sugarQ--;
+        t.qT = 0.25;
+        const n = state.nodes[t.node];
+        state.particles.push({ type: 'sugar', path: pathToRoot(t.node), i: 0, frac: 0, x: n.x, y: n.y, fromRes: false, t: 0 });
+      }
+      t.payT -= dt;
+      if (t.payT <= 0) {
+        t.payT = PAY_EVERY;
+        const want = t.info.wants;
+        if (Object.keys(want).every((k) => state.counts[k] >= want[k])) {
+          for (const k in want) state.counts[k] -= want[k];
+          t.sugarQ += t.info.gives;
+          t.trust = Math.min(1, t.trust + 0.34);
+          if (!t.paidOnce) { t.paidOnce = true; msg(TXT.forest.paid.replace('{tree}', TXT.forest.trees[t.kind]).replace('{n}', t.info.gives), 3); }
+        } else {
+          t.trust -= 0.34;
+          if (t.trust <= 0.01) breakUnion(t, TXT.forest.broken);
+          else msg(TXT.forest.unpaid.replace('{tree}', TXT.forest.trees[t.kind]), 3);
+        }
+      }
+      t.kidT -= dt;
+      if (t.kidT <= 0) {
+        t.kidT = KID_EVERY;
+        t.kids = t.kids.filter((k) => state.mushrooms.includes(k));
+        if (t.trust > 0.3 && t.kids.length < t.info.kids && roomForMore()) spawnTreeKid(t);
+      }
+    }
+    // the fairy ring: children come up by themselves around a strong mother
+    state.ringT -= dt;
+    if (state.ringT <= 0) {
+      state.ringT = RING_EVERY;
+      if (roomForMore()) for (const m of state.mushrooms) if (!m.mother && m.stage >= 4 && ringKid(m)) break;
+    }
+  }
+
+  function motherOf(root) {
+    return state.mushrooms.find((m) => !m.mother && m.root === root) || state.mushrooms.find((m) => !m.mother) || null;
+  }
+
+  function spawnTreeKid(t) {
+    for (let k = 0; k < 8; k++) {
+      const x = t.x + t.side * rr(80, 190);
+      t.side = -t.side;
+      if (x < 70 || x > WW - 70) continue;
+      if (state.mushrooms.some((m) => Math.abs(m.x - x) < 105)) continue;
+      if (rockHit(x, GROUND_Y + ROOT_DY, 10)) continue;
+      const kid = { x, node: t.node, root: t.root, mother: motherOf(t.root), stage: 0, prevStage: 0, anim: 1, born: state.t, species: t.kind, tree: t };
+      state.mushrooms.push(kid);
+      t.kids.push(kid);
+      const n = state.nodes[t.node];
+      addTip(t.node, Math.atan2(SOIL_TOP + 3 - n.y, x - n.x), { x, y: SOIL_TOP + 3 }, 0, AUTO_SPEED * 1.5, false);
+      burst(x, GROUND_Y, '190,255,150', 10);
+      if (!state.kidShown[t.kind]) {
+        state.kidShown[t.kind] = true;
+        msg(TXT.forest.kid.replace('{tree}', TXT.forest.trees[t.kind]).replace('{kid}', TXT.forest.species[t.kind]), 3.5);
+      }
+      return true;
+    }
+    return false;
+  }
+
+  function ringKid(mother) {
+    const kids = state.mushrooms.filter((m) => m.mother === mother);
+    const left = kids.filter((m) => m.x < mother.x).length, right = kids.length - left;
+    let best = null, bestScore = Infinity;
+    const nodes = state.nodes;
+    for (let i = 0; i < nodes.length; i += 2) {
+      const n = nodes[i];
+      if (n.dead || n.root !== mother.root || n.y > SOIL_TOP + 36) continue;
+      const dx = n.x - mother.x;
+      if (Math.abs(dx) < RING_MIN || n.x < 70 || n.x > WW - 70) continue;
+      if (state.mushrooms.some((m) => Math.abs(m.x - n.x) < COLONY_GAP)) continue;
+      // the side with fewer children first, then the spot nearest the ring's edge
+      const score = Math.abs(dx) + ((dx < 0 ? left : right) > (dx < 0 ? right : left) ? 5000 : 0);
+      if (score < bestScore) { bestScore = score; best = i; }
+    }
+    if (best == null) return false;
+    const n = nodes[best];
+    state.mushrooms.push({ x: n.x, node: best, root: mother.root, mother, stage: 0, prevStage: 0, anim: 1, born: state.t, ring: true });
+    burst(n.x, GROUND_Y, '255,220,140', 12);
+    if (!state.ringShown) { state.ringShown = true; msg(TXT.forest.ring, 4); }
+    return true;
+  }
+
+  function drawTrees() {
+    for (const t of state.trees) {
+      if (!visibleX(t.x, 200)) continue;
+      const y = GROUND_Y + 54;
+      if (t.allied) {
+        ctx.save(); ctx.globalCompositeOperation = 'lighter';
+        glowDot(t.x, GROUND_Y + 100, 120, '170,255,120', 0.12 + 0.05 * Math.sin(state.t * 2));
+        ctx.restore();
+        const want = Object.entries(t.info.wants).map(([k, v]) => v + ' ' + TXT.forest.res[k]).join(' + ');
+        text(TXT.forest.trees[t.kind] + ' · ' + TXT.forest.allied, t.x, y, 13, '#c9ffb0', 'center');
+        ctx.save();
+        roundRect(t.x - 46, y + 10, 92, 6, 3); ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fill();
+        roundRect(t.x - 46, y + 10, Math.max(6, 92 * t.trust), 6, 3); ctx.fillStyle = t.trust > 0.4 ? '#8fe36a' : '#e8a14a'; ctx.fill();
+        ctx.restore();
+        text(want + ' → ' + t.info.gives + ' ' + TXT.forest.res.sugar + ' · ' + Math.ceil(t.payT) + ' с', t.x, y + 30, 11, 'rgba(247,232,198,0.85)', 'center', 600);
+      } else if (state.mushrooms.length) {
+        ctx.save(); ctx.globalAlpha = 0.6;
+        text(TXT.forest.reach.replace('{tree}', TXT.forest.treesOf[t.kind]), t.x, y, 12, '#f7e8c6', 'center', 600);
+        ctx.restore();
+      }
+    }
+  }
+
   function render() {
     if (mode === 'story') { renderStory(); return; }
     buttons = [];
@@ -2885,6 +3079,7 @@
     updateTutorial(dt);
     updateRain(dt);
     updateDayNight(dt);
+    updateTrees(dt);
     updateAnts(dt);
     respawn(dt);
     if (state.needRebuild) { state.needRebuild = false; rebuildMycelium(); }
