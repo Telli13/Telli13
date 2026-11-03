@@ -5,6 +5,7 @@
  * stock grows mushrooms on the surface through 6 stages.
  *
  * v2: levels, dangers (grubs, hedgehog, rabbit, squirrel), spore reproduction.
+ * v10: a rotting log to trade water for organic matter, and honey fungus that kills trees.
  * v9: neighbouring fungi — golden kin to merge with, a purple rival to fight at the front.
  * v8: trees — mycorrhiza unions pay sugar and raise their own kind of children; fairy rings.
  * v7: day and night — at night pests swarm, hunters attack more and shade beetles come up.
@@ -82,7 +83,7 @@
       goal: { ripeNow: 1 },
       seed: 11, ww: 2400, wh: 1250, rocks: 12, pools: 1, cap: 18,
       plan: { water: 5, organic: 5, mineral: 4, sugar: 4 },
-      maxMushrooms: 6, hunters: [], pests: null, ants: null, par: 100, neighbors: [],
+      maxMushrooms: 6, hunters: [], pests: null, ants: null, par: 100, neighbors: ['rot'],
     },
     {
       name: 'Дети',
@@ -90,7 +91,7 @@
       goal: { children: 2 },
       seed: 22, ww: 3000, wh: 1400, rocks: 17, pools: 2, cap: 20,
       plan: { water: 7, organic: 6, mineral: 5, sugar: 4 },
-      maxMushrooms: 8, hunters: ['rabbit'], attackEvery: [18, 26], neighbors: ['kin'],
+      maxMushrooms: 8, hunters: ['rabbit'], attackEvery: [18, 26], neighbors: ['kin', 'rot'],
       pests: { kinds: ['woodlouse'], every: [22, 30], max: 1 }, ants: null, par: 220,
     },
     {
@@ -108,7 +109,7 @@
       goal: { children: 3 },
       seed: 44, ww: 3400, wh: 1600, rocks: 22, pools: 2, cap: 20,
       plan: { water: 7, organic: 7, mineral: 6, sugar: 5 },
-      maxMushrooms: 9, hunters: ['rabbit'], attackEvery: [22, 30], neighbors: ['rival'],
+      maxMushrooms: 9, hunters: ['rabbit'], attackEvery: [22, 30], neighbors: ['rival', 'parasite', 'rot'],
       pests: { kinds: ['grub', 'worm', 'woodlouse'], every: [12, 18], max: 3 }, ants: { every: [16, 24], max: 2 }, par: 320,
     },
     {
@@ -117,7 +118,7 @@
       goal: { mushrooms: 5, ripeNow: 2 },
       seed: 55, ww: 4000, wh: 1700, rocks: 26, pools: 2, cap: 22,
       plan: { water: 8, organic: 7, mineral: 7, sugar: 6 },
-      maxMushrooms: 10, hunters: ['hedgehog', 'rabbit', 'bird'], attackEvery: [12, 18], neighbors: ['rival', 'kin'],
+      maxMushrooms: 10, hunters: ['hedgehog', 'rabbit', 'bird'], attackEvery: [12, 18], neighbors: ['rival', 'kin', 'parasite'],
       pests: { kinds: ['grub', 'worm', 'beetle'], every: [14, 20], max: 2 }, ants: null, par: 420,
     },
     {
@@ -126,7 +127,7 @@
       goal: { ripeNow: 3, children: 2 },
       seed: 66, ww: 4000, wh: 1800, rocks: 34, pools: 2, cap: 18,
       plan: { water: 7, organic: 6, mineral: 6, sugar: 5 },
-      maxMushrooms: 10, hunters: ['hedgehog', 'rabbit', 'squirrel', 'bird'], attackEvery: [10, 15], neighbors: ['rival', 'rival'],
+      maxMushrooms: 10, hunters: ['hedgehog', 'rabbit', 'squirrel', 'bird'], attackEvery: [10, 15], neighbors: ['rival', 'rival', 'parasite', 'rot'],
       pests: { kinds: ['grub', 'worm', 'woodlouse', 'beetle'], every: [10, 15], max: 3 }, ants: { every: [18, 26], max: 2 }, par: 500,
     },
   ];
@@ -1965,7 +1966,7 @@
 
   function drawFlyers() {
     for (const f of state.flyers) {
-      const k = f.t, e = k * k * (3 - 2 * k);
+      const k = Math.max(0, f.t), e = k * k * (3 - 2 * k);
       const x = f.x0 + (f.x1 - f.x0) * e;
       const y = f.y0 + (f.y1 - f.y0) * e - Math.sin(k * Math.PI) * 90;
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
@@ -2040,6 +2041,7 @@
     for (const g of state.pests) if (g.state !== 'flee') out.push({ x: g.x, y: g.y });
     for (const a of state.ants) if (a.state !== 'flee') out.push({ x: a.x, y: a.y });
     for (const net of state.nets) if (!net.dead && net.front && state.t - net.frontAt < 3) out.push({ x: net.front.x, y: net.front.y });
+    for (const net of state.nets) if (!net.dead && net.kind === 'parasite' && net.target && net.biteNode != null) out.push({ x: net.target.x, y: GROUND_Y + 110 });
     return out;
   }
 
@@ -2873,7 +2875,7 @@
   function makeTrees() {
     state.trees = state.decor.filter((d) => d.layer === 0).map((d) => ({
       d, kind: d.s, info: TREE_KINDS[d.s], x: d.x,
-      allied: false, node: -1, root: -1, trust: 1, payT: 0, kidT: 0, side: 1, kids: [],
+      allied: false, node: -1, root: -1, trust: 1, payT: 0, kidT: 0, side: 1, kids: [], health: 1, infest: null, dead: false,
       sugarQ: 0, qT: 0, paidOnce: false,
     }));
   }
@@ -2907,7 +2909,8 @@
 
   function updateTrees(dt) {
     for (const t of state.trees) {
-      if (!t.allied) continue;
+      if (!t.dead && !t.infest) t.health = Math.min(1, t.health + dt / 120); // trees heal slowly
+      if (!t.allied || t.dead) continue;
       if (state.nodes[t.node].dead) { breakUnion(t, TXT.forest.cut); continue; }
       // sugar flows down the thread a unit at a time
       t.qT -= dt;
@@ -2998,8 +3001,15 @@
 
   function drawTrees() {
     for (const t of state.trees) {
-      if (!visibleX(t.x, 200)) continue;
+      if (t.dead || !visibleX(t.x, 200)) continue;
       const y = GROUND_Y + 54;
+      if (t.infest) { // honey fungus is eating the roots
+        text(TXT.nets.treeInfested.replace('{hp}', Math.round(t.health * 100)), t.x, y - 22, 13, '#ff9a7a', 'center');
+        ctx.save();
+        roundRect(t.x - 46, y - 12, 92, 6, 3); ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fill();
+        roundRect(t.x - 46, y - 12, Math.max(6, 92 * t.health), 6, 3); ctx.fillStyle = '#ff6a50'; ctx.fill();
+        ctx.restore();
+      }
       if (t.allied) {
         ctx.save(); ctx.globalCompositeOperation = 'lighter';
         glowDot(t.x, GROUND_Y + 100, 120, '170,255,120', 0.12 + 0.05 * Math.sin(state.t * 2));
@@ -3030,7 +3040,11 @@
   const NET_KINDS = {
     kin:   { color: '190,255,120', filter: 'hue-rotate(38deg) saturate(1.25) brightness(1.12)', grows: false },
     rival: { color: '190,110,255', filter: 'hue-rotate(250deg) saturate(1.35) brightness(0.95)', grows: true },
+    rot:   { color: '205,150,95',  filter: '', grows: false },
+    parasite: { color: '255,85,70', filter: 'sepia(0.55) hue-rotate(-12deg) saturate(1.5) brightness(1.05)', grows: true },
   };
+  const ROT_TRADE = { every: 20, water: 2, organic: 3 };
+  const PARASITE_KILL_TIME = 60; // s for honey fungus to kill a tree it has reached
   const KIN_COST = 3, NET_STEP = 6, FRONT_EVERY = 0.8, RIVAL_MAX_NODES = 700;
 
   function netAdd(net, x, y, parent) {
@@ -3054,19 +3068,36 @@
   function makeNets(L) {
     state.nets = [];
     for (const kind of L.neighbors || []) {
-      let x = null;
-      for (let k = 0; k < 60 && x == null; k++) {
+      let x = null, target = null;
+      if (kind === 'parasite') { // honey fungus starts near a tree and goes for it
+        // prefer one of the three trees nearest the start, then any other tree
+        const byDist = state.trees.filter((t) => !t.dead).sort((a, b) => Math.abs(a.x - state.startX) - Math.abs(b.x - state.startX));
+        const first = byDist.slice(0, 3).sort(() => rand() - 0.5);
+        for (const t of [...first, ...byDist.slice(3)]) {
+          for (let k = 0; k < 12 && x == null; k++) {
+            const cx = clamp(t.x + (rand() < 0.5 ? -1 : 1) * rr(380, 520), 200, WW - 200);
+            if (rockHit(cx, GROUND_Y + ROOT_DY, 30) || Math.abs(cx - state.startX) < 250) continue;
+            if (state.nets.some((o) => Math.abs(o.x - cx) < 400)) continue; // keep clear of other neighbours
+            x = cx;
+            target = t;
+          }
+          if (x != null) break;
+        }
+      }
+      const minD = kind === 'rot' ? 450 : 800;
+      for (let k = 0; k < 60 && x == null && kind !== 'parasite'; k++) {
         const cx = rr(200, WW - 200);
-        if (Math.abs(cx - state.startX) < 800) continue;
+        if (Math.abs(cx - state.startX) < minD) continue;
         if (state.nets.some((o) => Math.abs(o.x - cx) < 700)) continue;
         if (rockHit(cx, GROUND_Y + ROOT_DY, 30)) continue;
         x = cx;
       }
       if (x == null) continue;
-      const net = { kind, info: NET_KINDS[kind], x, nodes: [], tips: [], strength: kind === 'rival' ? 4 : 0, growT: 1, frontT: 0,
-        contact: null, dead: false, seen: false, front: null, frontAt: -9, mushStage: kind === 'kin' ? 3 : 2, trees: [] };
+      const net = { kind, info: NET_KINDS[kind], x, nodes: [], tips: [], strength: { rival: 4, parasite: 3 }[kind] || 0, growT: 1, frontT: 0,
+        contact: null, dead: false, seen: false, front: null, frontAt: -9, mushStage: kind === 'kin' ? 3 : 2, trees: [],
+        target, biteNode: null, gainT: 10, tradeT: 8, tradedOnce: false };
       netAdd(net, x, GROUND_Y + ROOT_DY, -1);
-      for (let b = 0; b < 5; b++) { // a small network to start with
+      for (let b = 0; b < (kind === 'kin' || kind === 'rival' ? 5 : 3); b++) { // a small network to start with
         const a = rr(0.35, Math.PI - 0.35), d = rr(150, 260);
         const tx = x + Math.cos(a) * d * 1.4, ty = GROUND_Y + ROOT_DY + Math.sin(a) * d;
         let at = 0;
@@ -3093,9 +3124,11 @@
     for (const t of state.trees) if (t.rival === net && net.nodes[t.rivalNode].dead) { t.rival = null; }
     if (net.nodes[0].dead && !net.dead) {
       net.dead = true;
-      state.counts.sugar += 4;
-      burst(net.x, GROUND_Y - 30, NET_KINDS.rival.color, 24);
-      msg(TXT.nets.rivalDead, 4);
+      const reward = net.kind === 'parasite' ? 3 : 4;
+      state.counts.sugar += reward;
+      if (net.target && net.target.infest === net) net.target.infest = null;
+      burst(net.x, GROUND_Y - 30, net.info.color, 24);
+      msg((net.kind === 'parasite' ? TXT.nets.parasiteDead : TXT.nets.rivalDead).replace('{n}', reward), 4);
     }
     return count;
   }
@@ -3125,9 +3158,11 @@
       if (net.dead) continue;
       if (!net.seen && net.x > cam.x + 100 && net.x < cam.x + W - 100) {
         net.seen = true;
-        msg(net.kind === 'kin' ? TXT.nets.seenKin : TXT.nets.seenRival, 4);
+        msg(TXT.nets.seen[net.kind], 4);
       }
       if (net.kind === 'rival') updateRival(net, dt);
+      if (net.kind === 'parasite') updateParasite(net, dt);
+      if (net.kind === 'rot') updateRot(net, dt);
       // contacts with your network
       net.frontT -= dt;
       if (net.frontT > 0) continue;
@@ -3140,8 +3175,11 @@
         if (i >= 0 && d < 12) { hit = { k, i }; break; }
       }
       if (!hit) continue;
-      if (net.kind === 'kin') {
-        if (!net.contact) { net.contact = hit; msg(TXT.nets.contactKin.replace('{n}', KIN_COST), 4); }
+      if (net.kind === 'kin' || net.kind === 'rot') {
+        if (!net.contact) {
+          net.contact = hit;
+          msg(net.kind === 'kin' ? TXT.nets.contactKin.replace('{n}', KIN_COST) : TXT.nets.contactRot.replace('{w}', ROT_TRADE.water).replace('{o}', ROT_TRADE.organic), 4);
+        }
         continue;
       }
       clash(net, hit);
@@ -3202,16 +3240,87 @@
     if (theirs > 0) net.strength--;
     if (youWin) {
       netKill(net, hit.k);
-      if (state.t - (net.frontMsg || -9) > 3) { net.frontMsg = state.t; msg(TXT.nets.frontWin, 2.2); }
+      if (state.t - (net.frontMsg || -9) > 3) { net.frontMsg = state.t; msg(TXT.nets.frontWin.replace('{name}', TXT.nets.namesLow[net.kind]), 2.2); }
     } else {
       killSubtree(hit.i);
-      if (state.t - (net.frontMsg || -9) > 3) { net.frontMsg = state.t; msg(mine > 0 ? TXT.nets.frontLose : TXT.nets.frontNoSugar, 2.5); }
+      if (state.t - (net.frontMsg || -9) > 3) { net.frontMsg = state.t; msg((mine > 0 ? TXT.nets.frontLose : TXT.nets.frontNoSugar).replace('{name}', TXT.nets.namesLow[net.kind]), 2.5); }
     }
   }
 
+  // honey fungus: creeps to its tree, then eats the roots until the tree dies
+  function updateParasite(net, dt) {
+    if (!net.target || net.target.dead) {
+      let best = null, bd = Infinity;
+      for (const t of state.trees) { if (t.dead) continue; const d = Math.abs(t.x - net.x); if (d < bd) { bd = d; best = t; } }
+      net.target = best;
+      net.biteNode = null;
+      if (!best) return;
+    }
+    const t = net.target;
+    if (net.biteNode != null) {
+      if (net.nodes[net.biteNode].dead) { t.infest = null; net.biteNode = null; return; }
+      t.infest = net;
+      t.health -= dt / PARASITE_KILL_TIME;
+      net.gainT -= dt;
+      if (net.gainT <= 0) { net.gainT = 10; net.strength++; }
+      if (t.health <= 0) treeDies(t, net);
+      return;
+    }
+    net.growT -= dt;
+    if (net.growT > 0) return;
+    net.growT = 0.55;
+    // grow from the live node nearest the tree
+    let from = -1, bd = Infinity;
+    for (let i = 0; i < net.nodes.length; i++) {
+      const n = net.nodes[i];
+      if (n.dead) continue;
+      const d = dist(n.x, n.y, t.x, GROUND_Y + 120);
+      if (d < bd) { bd = d; from = i; }
+    }
+    if (from < 0) return;
+    const nx = netStep(net, from, t.x, GROUND_Y + 120, 0.7);
+    if (nx < 0) return;
+    const n = net.nodes[nx];
+    if (Math.abs(n.x - t.x) < 70 && n.y < GROUND_Y + 240) {
+      net.biteNode = nx;
+      t.infest = net;
+      msg(TXT.nets.parasiteReached.replace('{tree}', TXT.forest.trees[t.kind]), 4);
+    }
+  }
+
+  function treeDies(t, net) {
+    t.dead = true;
+    t.infest = null;
+    if (t.allied) breakUnion(t, TXT.nets.treeDied);
+    else msg(TXT.nets.treeDied.replace('{tree}', TXT.forest.trees[t.kind]), 4);
+    for (const m of state.mushrooms.slice()) if (m.tree === t) { removeMushroom(m); burst(m.x, GROUND_Y - 10, '170,120,80', 10); }
+    state.decor = state.decor.filter((d) => d !== t.d && !(d.layer === -1 && d.x === t.x));
+    burst(t.x, GROUND_Y - 120, '160,120,80', 30);
+    net.biteNode = null;
+    net.target = null;
+    net.strength += 5;
+  }
+
+  // rotting log: trades water for organic matter once your thread touches it
+  function updateRot(net, dt) {
+    if (!net.contact) return;
+    if (state.nodes[net.contact.i].dead) { net.contact = null; return; }
+    net.tradeT -= dt;
+    if (net.tradeT > 0) return;
+    net.tradeT = ROT_TRADE.every;
+    if (state.counts.water < ROT_TRADE.water) { msg(TXT.nets.rotNeedWater.replace('{w}', ROT_TRADE.water), 2.5); return; }
+    state.counts.water -= ROT_TRADE.water;
+    for (let i = 0; i < ROT_TRADE.organic; i++) {
+      const slot = hudSlot('organic');
+      state.flyers.push({ type: 'organic', x0: clamp(net.x - cam.x + (i - 1) * 20, -40, W + 40), y0: clamp(GROUND_Y - 20 - cam.y, -40, H + 40), x1: slot.x, y1: slot.y, t: -i * 0.15 });
+    }
+    if (!net.tradedOnce) { net.tradedOnce = true; msg(TXT.nets.rotTraded.replace('{w}', ROT_TRADE.water).replace('{o}', ROT_TRADE.organic), 3); }
+  }
+
   function netMushBox(net) {
-    const im = img['mushroom_' + net.mushStage];
-    const w = im.width * MUSH_SCALE, h = im.height * MUSH_SCALE;
+    const im = net.kind === 'rot' ? img.log : img['mushroom_' + (net.kind === 'parasite' ? 3 : net.mushStage)];
+    const sc = net.kind === 'rot' ? 0.42 : MUSH_SCALE;
+    const w = im.width * sc, h = im.height * sc;
     return { x: net.x - w / 2, y: GROUND_Y + 14 - h, w, h };
   }
 
@@ -3279,14 +3388,23 @@
   function drawNetMushrooms() {
     for (const net of state.nets) {
       if (net.dead || !visibleX(net.x)) continue;
-      const im = tinted('mushroom_' + net.mushStage, net.info.filter);
-      drawSprite(ctx, im, net.x, GROUND_Y + 14, MUSH_SCALE, false, 1, Math.sin(state.t * 1.1 + net.x) * 0.012);
+      const sway = Math.sin(state.t * 1.1 + net.x) * 0.012;
+      if (net.kind === 'rot') drawSprite(ctx, img.log, net.x, GROUND_Y + 18, 0.42, false);
+      else if (net.kind === 'parasite') { // a cluster of honey mushrooms
+        const im = tinted('mushroom_2', net.info.filter);
+        drawSprite(ctx, im, net.x - 20, GROUND_Y + 14, 0.36, true, 1, sway - 0.08);
+        drawSprite(ctx, im, net.x + 18, GROUND_Y + 14, 0.34, false, 1, sway + 0.08);
+        drawSprite(ctx, tinted('mushroom_3', net.info.filter), net.x, GROUND_Y + 14, 0.42, false, 1, sway);
+      } else drawSprite(ctx, tinted('mushroom_' + net.mushStage, net.info.filter), net.x, GROUND_Y + 14, MUSH_SCALE, false, 1, sway);
       const box = netMushBox(net);
       const name = TXT.nets.names[net.kind];
-      const sub = net.kind === 'kin'
-        ? (net.contact ? TXT.nets.kinClick.replace('{n}', KIN_COST) : TXT.nets.kinReach)
-        : TXT.nets.rivalPower.replace('{n}', net.strength);
-      text(name, net.x, box.y - 30, 14, net.kind === 'kin' ? '#ffe38a' : '#d9b8ff', 'center');
+      let sub;
+      if (net.kind === 'kin') sub = net.contact ? TXT.nets.kinClick.replace('{n}', KIN_COST) : TXT.nets.kinReach;
+      else if (net.kind === 'rot') sub = net.contact ? TXT.nets.rotTrade.replace('{w}', ROT_TRADE.water).replace('{o}', ROT_TRADE.organic).replace('{s}', Math.ceil(net.tradeT)) : TXT.nets.kinReach;
+      else if (net.kind === 'parasite' && net.biteNode != null && net.target) sub = TXT.nets.parasiteBiting.replace('{tree}', TXT.forest.trees[net.target.kind]).replace('{hp}', Math.round(net.target.health * 100));
+      else sub = TXT.nets.rivalPower.replace('{n}', net.strength);
+      const col = { kin: '#ffe38a', rival: '#d9b8ff', rot: '#e6c49a', parasite: '#ffb36b' }[net.kind];
+      text(name, net.x, box.y - 30, 14, col, 'center');
       text(sub, net.x, box.y - 12, 12, 'rgba(247,232,198,0.85)', 'center', 600);
     }
   }
