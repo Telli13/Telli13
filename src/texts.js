@@ -30,6 +30,14 @@ window.MF_TEXT = {
     stormCast: 'Гроза! Вредителей смоет, звери разбегутся',
     stormHit: 'Гроза смыла вредителей: {pests}, спугнула зверей: {animals}',
   },
+  // day and night: a message as each part of the day begins, and the clock's labels
+  daynight: {
+    day: 'Наступил день — существа прячутся по норам',
+    dusk: 'Темнеет… ночью выходят страшные существа',
+    night: 'Ночь! Из глубины лезут тени-жуки — береги грибницу',
+    dawn: 'Рассвет — тени уползают обратно',
+    names: { day: 'День', dusk: 'Закат', night: 'Ночь', dawn: 'Рассвет' },
+  },
   menu: {
     intro: '▶ Интро',
   },

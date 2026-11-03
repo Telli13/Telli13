@@ -5,6 +5,7 @@
  * stock grows mushrooms on the surface through 6 stages.
  *
  * v2: levels, dangers (grubs, hedgehog, rabbit, squirrel), spore reproduction.
+ * v7: day and night — at night pests swarm, hunters attack more and shade beetles come up.
  * v6: rain — clouds gather from water; warm rain feeds the soil, a storm washes pests out.
  * v5: a 3-screen intro on first launch and first-play tips (texts in src/texts.js).
  * v4: soil pests — grub, worm, woodlouse and armoured beetle — each eat the threads their own way.
@@ -270,6 +271,7 @@
       bluetit: { x: -200, y: 120, active: false, wait: 6, dir: 1 },
       tutorial: li === 0 && !progress.tutorialDone ? { step: 0, t: 0, doneAt: null } : null,
       clouds: 0, rain: null, cloudsShown: false,
+      clock: 5, dark: 0, phase: 'day', shadeTimer: 3,
       grewOnce: false, fedOnce: false, hitRock: false,
     };
     makeDecor();
@@ -885,7 +887,7 @@
       else updateBird(h, dt);
     }
     if (!state.L.attackEvery) return;
-    state.attackTimer -= dt;
+    state.attackTimer -= dt * (0.7 + 1.3 * state.dark); // hungrier at night
     if (state.attackTimer > 0) return;
     const free = state.hunters.filter((h) => h.threat && ['idle', 'away', 'return'].includes(h.state));
     const options = [];
@@ -1050,6 +1052,8 @@
       first: 'Мокрица объедает молодые кончики нитей! Кликните по ней' },
     beetle:    { name: 'Жук', sprite: 'beetle', scale: 0.27, speed: 22, chew: 3.0, hit: 42, hp: 3, faceRight: false, bit: 'Жук перегрыз толстую нить',
       first: 'Жук в панцире грызёт толстые нити! Кликните по нему 3 раза' },
+    shade:     { name: 'Тень-жук', sprite: 'shade', scale: 0.3, speed: 38, chew: 2.0, hit: 44, hp: 2, faceRight: false, bit: 'Тень-жук перегрыз нить',
+      first: 'Ночью из глубины лезут тени-жуки! Кликните по такому дважды' },
   };
 
   function spawnNear(x, y, minD, maxD) {
@@ -1094,13 +1098,13 @@
 
   function pestTarget(p) {
     if (p.kind === 'woodlouse') return nearestOf(branchEnds(), p.x, p.y);
-    if (p.kind === 'beetle') return nearestOf(biteable(12, 60), p.x, p.y);
+    if (p.kind === 'beetle' || p.kind === 'shade') return nearestOf(biteable(12, 60), p.x, p.y);
     return nearestOf(biteable(), p.x, p.y);
   }
 
   function spawnPest(kind) {
     const info = PESTS[kind];
-    const cands = kind === 'woodlouse' ? branchEnds() : kind === 'beetle' ? biteable(12, 60) : biteable();
+    const cands = kind === 'woodlouse' ? branchEnds() : (kind === 'beetle' || kind === 'shade') ? biteable(12, 60) : biteable();
     if (!cands.length) return false;
     const n = state.nodes[pick(cands)];
     const p = { kind, info, x: 0, y: 0, dir: 1, state: 'seek', target: -1, t: 0, chew: 0, wig: rr(0, 6), hp: info.hp, bites: 0, hurt: 0, cool: 0 };
@@ -1137,10 +1141,11 @@
   function updatePests(dt) {
     const P = state.L.pests;
     if (P) {
-      state.pestTimer -= dt;
+      state.pestTimer -= dt * (0.6 + 2 * state.dark); // few by day, many at night
       if (state.pestTimer <= 0) {
         state.pestTimer = rr(P.every[0], P.every[1]);
-        if (state.pests.filter((p) => p.state !== 'flee').length < P.max) spawnPest(pick(P.kinds));
+        const cap = P.max + (state.dark > 0.5 ? 2 : 0);
+        if (state.pests.filter((p) => p.state !== 'flee' && p.kind !== 'shade').length < cap) spawnPest(pick(P.kinds));
       }
     }
     for (const p of state.pests) {
@@ -1618,7 +1623,7 @@
     for (const g of state.pests) {
       if (!visibleX(g.x, 100)) continue;
       const info = g.info;
-      const im = img[info.sprite], sc = info.scale;
+      const im = g.kind === 'shade' ? shadeImg() : img[info.sprite], sc = info.scale;
       const chewing = g.state === 'chew';
       const wig = Math.sin(g.t * (chewing ? 18 : 6) + g.wig) * (chewing ? 0.08 : 0.05);
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
@@ -2662,6 +2667,145 @@
     }
   }
 
+  // ---------------------------------------------------------------- day and night
+  // day → dusk → night → dawn, ~2.5 minutes a round. At night pests come 2–3 times
+  // as often, hunters attack more often and shade beetles crawl up from the deep;
+  // at dawn the shades burrow back. The mycelium glows brighter in the dark.
+  const DAYCYCLE = [
+    { key: 'day', len: 70 }, { key: 'dusk', len: 12 }, { key: 'night', len: 50 }, { key: 'dawn', len: 12 },
+  ];
+  const CYCLE = DAYCYCLE.reduce((s, p) => s + p.len, 0);
+  let shadeCanvas = null;
+
+  function dayInfo() {
+    let t = state.clock % CYCLE;
+    for (const ph of DAYCYCLE) {
+      if (t < ph.len) {
+        const k = t / ph.len;
+        const dark = ph.key === 'day' ? 0 : ph.key === 'dusk' ? k : ph.key === 'night' ? 1 : 1 - k;
+        return { key: ph.key, k, dark, left: ph.len - t };
+      }
+      t -= ph.len;
+    }
+    return { key: 'day', k: 0, dark: 0, left: 0 };
+  }
+
+  function shadeImg() { // the beetle sprite, dyed night-black
+    if (!shadeCanvas) {
+      const b = img.beetle;
+      shadeCanvas = makeCanvas(b.width, b.height);
+      const g = shadeCanvas.getContext('2d');
+      g.drawImage(b, 0, 0);
+      g.globalCompositeOperation = 'source-atop';
+      g.fillStyle = 'rgba(22,10,38,0.8)';
+      g.fillRect(0, 0, b.width, b.height);
+    }
+    return shadeCanvas;
+  }
+
+  function updateDayNight(dt) {
+    state.clock += dt;
+    const d = dayInfo();
+    state.dark = d.dark;
+    if (d.key !== state.phase) {
+      state.phase = d.key;
+      msg(TXT.daynight[d.key], 3.5);
+      if (d.key === 'dawn') for (const p of state.pests) if (p.kind === 'shade' && p.state !== 'flee') pestFlee(p);
+    }
+    if (d.key === 'night') {
+      state.shadeTimer -= dt;
+      if (state.shadeTimer <= 0) {
+        state.shadeTimer = rr(7, 12);
+        const alive = state.pests.filter((p) => p.kind === 'shade' && p.state !== 'flee').length;
+        if (alive < 1 + Math.floor(levelIndex / 2)) spawnPest('shade');
+      }
+    }
+  }
+
+  function drawNight() {
+    const dark = state.dark || 0;
+    if (dark <= 0.01) return;
+    const v = view();
+    const warm = state.phase === 'dusk' || state.phase === 'dawn' ? Math.sin(Math.PI * dark) : 0;
+    ctx.save();
+    if (warm > 0) { // a red sunset / sunrise over the sky
+      ctx.fillStyle = `rgba(255,110,50,${0.2 * warm})`;
+      ctx.fillRect(v.x0, v.y0, v.x1 - v.x0, Math.max(0, GROUND_Y + 20 - v.y0));
+    }
+    ctx.fillStyle = `rgba(6,10,32,${0.6 * dark})`;
+    ctx.fillRect(v.x0, v.y0, v.x1 - v.x0, v.y1 - v.y0);
+    ctx.globalCompositeOperation = 'lighter';
+    if (cam.y < 160) { // stars and the moon in the top of the sky
+      for (let i = 0; i < 40; i++) {
+        const sx = (i * 397) % W, sy = 12 + (i * 53) % 130;
+        const tw = 0.5 + 0.5 * Math.sin(state.t * 2 + i * 1.7);
+        ctx.fillStyle = `rgba(230,235,255,${dark * (0.35 + 0.5 * tw)})`;
+        ctx.fillRect(cam.x + sx, sy, 2, 2);
+      }
+      glowDot(cam.x + W * 0.8, 70, 60, '200,210,255', 0.5 * dark);
+      ctx.fillStyle = `rgba(240,240,225,${0.9 * dark})`;
+      ctx.beginPath(); ctx.arc(cam.x + W * 0.8, 70, 22, 0, Math.PI * 2); ctx.fill();
+    }
+    // the mycelium shines brighter in the dark
+    ctx.globalAlpha = 0.6 * dark;
+    for (const tile of tiles.values()) {
+      const x = tile.tx * TILE, y = tile.ty * TILE;
+      if (x > v.x1 || x + TILE < v.x0 || y > v.y1 || y + TILE < v.y0) continue;
+      ctx.drawImage(tile.c, x, y, TILE, TILE);
+    }
+    ctx.globalAlpha = 1;
+    for (const r of state.resources) { // resources keep a faint glow so they can be found
+      if (r.dead || r.x < v.x0 || r.x > v.x1 || r.y < v.y0 || r.y > v.y1) continue;
+      glowDot(r.x, r.y, r.size * 0.7, RES[r.type].glow, 0.3 * dark);
+    }
+    for (let i = 0; i < 16; i++) { // fireflies over the grass
+      const fx = cam.x + ((i * 137 + state.t * 18 * (1 + (i % 3))) % W);
+      const fy = GROUND_Y - 30 - 70 * Math.abs(Math.sin(state.t * 0.6 + i));
+      glowDot(fx, fy, 7, '200,255,120', 0.8 * dark * (0.4 + 0.6 * Math.abs(Math.sin(state.t * 3 + i))));
+    }
+    for (const p of state.pests) { // eyes in the dark
+      if (p.state === 'flee' || !visibleX(p.x, 60) || (p.kind !== 'shade' && dark < 0.4)) continue;
+      const im = p.kind === 'shade' ? shadeImg() : img[p.info.sprite];
+      const hx = p.x + p.dir * im.width * p.info.scale * 0.36 * (p.info.faceRight ? 1 : 1);
+      const hy = p.y - im.height * p.info.scale * 0.1;
+      glowDot(hx, hy - 3, 6, '255,40,30', 0.95 * Math.max(dark, p.kind === 'shade' ? 1 : 0));
+      glowDot(hx - p.dir * 6, hy + 2, 5, '255,40,30', 0.85 * Math.max(dark, p.kind === 'shade' ? 1 : 0));
+    }
+    ctx.restore();
+  }
+
+  function drawDayClock() {
+    const d = dayInfo();
+    const cx = HUD.x - HUD.w / 2 - 44, cy = HUD.y + HUD.h / 2, r = 26;
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, r + 6, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(28,18,12,0.82)'; ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(214,163,82,0.85)'; ctx.stroke();
+    // the round of the day as coloured arcs, a hand at the current time
+    let a0 = -Math.PI / 2;
+    const col = { day: '#f2c94c', dusk: '#f08a4b', night: '#4a5aa8', dawn: '#f0a07a' };
+    for (const ph of DAYCYCLE) {
+      const a1 = a0 + Math.PI * 2 * ph.len / CYCLE;
+      ctx.beginPath(); ctx.arc(cx, cy, r, a0, a1);
+      ctx.lineWidth = 5; ctx.strokeStyle = col[ph.key]; ctx.stroke();
+      a0 = a1;
+    }
+    const ah = -Math.PI / 2 + Math.PI * 2 * ((state.clock % CYCLE) / CYCLE);
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(ah) * (r - 2), cy + Math.sin(ah) * (r - 2));
+    ctx.lineWidth = 2; ctx.strokeStyle = '#fff3da'; ctx.stroke();
+    if (d.key === 'night') { // moon
+      ctx.fillStyle = '#e8ecff';
+      ctx.beginPath(); ctx.arc(cx, cy, 11, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(28,18,12,1)';
+      ctx.beginPath(); ctx.arc(cx + 5, cy - 3, 9, 0, Math.PI * 2); ctx.fill();
+    } else {
+      ctx.fillStyle = d.key === 'day' ? '#ffd24a' : '#f39a5a';
+      ctx.beginPath(); ctx.arc(cx, cy, 9, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+    text(TXT.daynight.names[d.key] + ' ' + fmtTime(d.left), cx, cy + r + 18, 13, d.key === 'night' ? '#b9c4ff' : '#f7e8c6', 'center', 700);
+  }
+
   function render() {
     if (mode === 'story') { renderStory(); return; }
     buttons = [];
@@ -2681,10 +2825,11 @@
     if (mode === 'play') drawTutorialFocus();
     drawWorldFx();
     drawRain();
+    drawNight();
     ctx.setTransform(RS, 0, 0, RS, 0, 0); // screen space
     drawFlyers();
     drawRainOverlay();
-    if (mode === 'play') { drawHud(); drawRainPanel(); drawTutorial(); }
+    if (mode === 'play') { drawHud(); drawRainPanel(); drawDayClock(); drawTutorial(); }
     if (mode === 'menu') drawMenu();
     if (mode === 'intro') drawIntro();
     if (mode === 'won') drawWon();
@@ -2734,6 +2879,7 @@
     updatePests(dt);
     updateTutorial(dt);
     updateRain(dt);
+    updateDayNight(dt);
     updateAnts(dt);
     respawn(dt);
     if (state.needRebuild) { state.needRebuild = false; rebuildMycelium(); }
