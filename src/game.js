@@ -301,7 +301,7 @@
       clock: 5, dark: 0, phase: 'day', shadeTimer: 3,
       trees: [], ringT: 5, kidShown: {}, ringShown: false, nets: [],
       grewOnce: false, fedOnce: false, hitRock: false,
-      base: null, paused: false,
+      base: null, paused: false, sproutKind: 'normal', gut: [],
     };
     if (blank) return;
     makeDecor();
@@ -704,7 +704,7 @@
       return false;
     }
     const mother = state.mushrooms.find((m) => !m.mother && m.root === root);
-    const child = { x: n.x, node: nodeIdx, root, mother, stage: 0, prevStage: 0, anim: 1, born: state.t };
+    const child = { x: n.x, node: nodeIdx, root, mother, stage: 0, prevStage: 0, anim: 1, born: state.t, kind: state.sproutKind || 'normal' };
     state.mushrooms.push(child);
     burst(n.x, GROUND_Y, '255,220,140', 14);
     msg('Из корней проклюнулся гриб-ребёнок!', 2.5);
@@ -717,10 +717,87 @@
     return { x: m.x - w / 2, y: GROUND_Y + 14 - h, w, h };
   }
 
+
+  // ---------------------------------------------------------------- kinds of mushroom the player chooses
+  // A child that sprouts from a player's thread is of the kind picked in the "New mushroom" panel:
+  //   normal — counts for the goals;
+  //   toxic  — a death cap: +1 sugar per stage; an animal that eats it falls asleep, then avoids
+  //            that part of the forest; poisoned twice, it leaves the forest for good;
+  //   decoy  — cheap, grows only to stage 3, does not count; animals go for it first, and one that
+  //            eats it carries its spores away: a new colony comes up where the animal went;
+  //   glow   — +1 sugar per stage; at night pests do not dare come near it.
+  const KINDS = {
+    normal: { key: '3', filter: '' },
+    toxic:  { key: '4', filter: 'hue-rotate(85deg) saturate(0.9) brightness(1.08)', extraSugar: 1 },
+    decoy:  { key: '5', filter: 'saturate(0.25) brightness(1.18)', maxStage: 3, cheap: true },
+    glow:   { key: '6', filter: 'hue-rotate(175deg) saturate(1.6) brightness(1.22)', extraSugar: 1 },
+  };
+  const KIND_ORDER = ['normal', 'toxic', 'decoy', 'glow'];
+  const GLOW_REACH = 420, WARY_REACH = 900, WARY_TIME = 180, SLEEP_TIME = 20, GUT_TIME = 14;
+  const counts = (m) => m.kind !== 'decoy'; // decoys never count for goals
+
+  function needFor(m) {
+    const base = STAGES[m.stage], k = KINDS[m.kind || 'normal'];
+    const need = {};
+    for (const t of RES_ORDER) need[t] = k.cheap ? Math.ceil(base[t] / 2) : base[t];
+    if (k.extraSugar) need.sugar += k.extraSugar;
+    return need;
+  }
+
+  function nearGlow(x) {
+    return state.mushrooms.some((m) => m.kind === 'glow' && m.stage >= 2 && Math.abs(m.x - x) < GLOW_REACH);
+  }
+
+  // what happens to an animal after its meal
+  function afterMeal(h, m) {
+    if (m.kind === 'toxic') {
+      h.poison = (h.poison || 0) + 1;
+      h.wary = { x: m.x, until: state.t + WARY_TIME };
+      burst(h.ground ? h.x : h.x, h.ground ? GROUND_Y - 20 : h.y, '150,230,90', 16);
+      if (h.ground) { h.state = 'sleep'; h.timer = SLEEP_TIME; h.target = null; }
+      else { h.state = 'flee'; if (h.poison >= 2) h.banned = true; }
+      msg(TXT.kinds.poisoned.replace('{who}', h.info.name), 3.5);
+      return true;
+    }
+    if (m.kind === 'decoy') {
+      state.gut.push({ h, t: GUT_TIME });
+      msg(TXT.kinds.decoyEaten.replace('{who}', h.info.name), 3.5);
+    }
+    return false;
+  }
+
+  function updateGut(dt) {
+    for (const g of state.gut) {
+      g.t -= dt;
+      if (g.t > 0) continue;
+      g.done = true;
+      const h = g.h;
+      let x = h.state === 'away' || h.x < 80 || h.x > WW - 80 ? rr(300, WW - 300) : h.x;
+      for (let k = 0; k < 20 && sporeSpotProblem(x); k++) x = clamp(x + rr(-600, 600), 100, WW - 100);
+      if (roomForMore() && !sporeSpotProblem(x)) {
+        newColony(x, true);
+        burst(x, GROUND_Y, '210,160,255', 16);
+        msg(TXT.kinds.gutColony, 3.5);
+      }
+    }
+    state.gut = state.gut.filter((g) => !g.done);
+  }
+
+  function drawKindPanel() {
+    const x = 14, y = 206, w = 236;
+    panel(x, y, w, 122, 14);
+    text(TXT.kinds.title, x + 14, y + 18, 14, '#ffe2a0');
+    KIND_ORDER.forEach((k, i) => {
+      const bx = x + 12 + (i % 2) * 108, by = y + 32 + Math.floor(i / 2) * 44;
+      const on = state.sproutKind === k;
+      button(bx, by, 104, 38, TXT.kinds.names[k] + ' [' + KINDS[k].key + ']', () => { state.sproutKind = k; msg(TXT.kinds.picked[k], 3); }, { size: 13, primary: on });
+    });
+  }
   function growthTarget() {
     let best = null;
     for (const m of state.mushrooms) {
       if (m.stage >= RIPE || (m.tree && !m.tree.allied)) continue; // a broken union stops its children
+      if (m.kind === 'decoy' && m.stage >= KINDS.decoy.maxStage) continue;
       if (!best || m.stage > best.stage) best = m;
     }
     return best;
@@ -732,7 +809,7 @@
     if (state.growCooldown > 0) return;
     const m = growthTarget();
     if (!m) return;
-    const need = STAGES[m.stage];
+    const need = needFor(m);
     if (!RES_ORDER.every((t) => state.counts[t] >= need[t])) return;
     for (const t of RES_ORDER) state.counts[t] -= need[t];
     m.prevStage = m.stage;
@@ -946,8 +1023,9 @@
     for (const h of free) {
       for (const m of state.mushrooms) {
         if (!preyFor(h, m) || state.hunters.some((o) => o.target === m)) continue;
+        if (h.wary && state.t < h.wary.until && Math.abs(m.x - h.wary.x) < WARY_REACH) continue; // remembers the poison
         // children are the favourite target
-        options.push({ h, m, score: Math.abs(h.x - m.x) / 1000 + (m.mother ? -0.6 : 0) + rand() });
+        options.push({ h, m, score: Math.abs(h.x - m.x) / 1000 + (m.mother ? -0.6 : 0) + (m.kind === 'decoy' ? -1.5 : 0) + rand() });
       }
     }
     if (!options.length) { state.attackTimer = 3; return; }
@@ -989,15 +1067,13 @@
         if (h.eatT >= h.info.eat) {
           const m = h.target;
           h.target = null;
+          loseMushroom(m, h.kind);
+          if (afterMeal(h, m)) break;
           if (h.kind === 'squirrel') {
             h.carrying = m.stage;
-            loseMushroom(m, h.kind);
             h.state = 'carry';
             h.dir = h.x < WW / 2 ? -1 : 1;
-          } else {
-            loseMushroom(m, h.kind);
-            h.state = 'return';
-          }
+          } else h.state = 'return';
         }
         break;
       case 'flee':
@@ -1011,8 +1087,14 @@
         }
         break;
       case 'away':
+        if (h.banned) break; // poisoned twice: gone from this forest
         h.timer -= dt;
         if (h.timer <= 0) h.state = 'return';
+        break;
+      case 'sleep': // poisoned: asleep where it ate
+        h.y = 0;
+        h.timer -= dt;
+        if (h.timer <= 0) { h.state = 'flee'; h.dir = rand() < 0.5 ? -1 : 1; if (h.poison >= 2) { h.banned = true; msg(TXT.kinds.leaves.replace('{who}', h.info.name), 3.5); } }
         break;
       case 'return':
         h.y = bounce();
@@ -1036,7 +1118,7 @@
     } else if (h.state === 'eat') {
       if (!targetValid(h)) { h.state = 'flee'; return; }
       h.eatT += dt;
-      if (h.eatT >= h.info.eat) { const m = h.target; h.target = null; h.state = 'flee'; loseMushroom(m, 'bird'); }
+      if (h.eatT >= h.info.eat) { const m = h.target; h.target = null; h.state = 'flee'; loseMushroom(m, 'bird'); afterMeal(h, m); }
     } else if (h.state === 'flee') {
       h.x += h.dir * 380 * dt;
       h.y -= 200 * dt;
@@ -1237,6 +1319,7 @@
         if (p.t > 5 || p.x < -80 || p.x > WW + 80) p.gone = true;
         continue;
       }
+      if (state.dark > 0.5 && nearGlow(p.x) && p.y < GROUND_Y + 900) { pestFlee(p); continue; } // the glow scares them off
       if (p.kind === 'worm') { updateWorm(p, dt); continue; }
       if (p.state === 'pause') { p.chew -= dt; if (p.chew <= 0) { p.state = 'seek'; p.target = -1; } continue; }
       if (p.target < 0 || state.nodes[p.target].dead) p.target = pestTarget(p);
@@ -1378,7 +1461,7 @@
   // ---- goals
   function goalLines() {
     const g = state.L.goal;
-    const ms = state.mushrooms;
+    const ms = state.mushrooms.filter(counts);
     const lines = [];
     const b = state.base || { roots: 0, kids: 0, total: 0, ripe: 0 };
     const more = state.base && state.base.total > 0; // a continued forest: count what is new this level
@@ -1847,8 +1930,17 @@
         const e = Math.sin(state.t * 13);
         rot = fwd * (0.07 + 0.05 * e); sy = 1 - 0.04 * Math.max(0, e); sx = 1 + 0.02 * Math.max(0, e);
       }
+      if (h.state === 'sleep') { // poisoned: lying down, breathing slowly
+        rot = fwd * 0.28; sx = 1.08; sy = 0.86 + 0.03 * Math.sin(state.t * 2);
+      }
       h.lastY = h.y;
       drawBody(im, h.x, bottom, h.info.scale, flip, sx, sy, rot);
+      if (h.state === 'sleep') {
+        const k = (state.t * 0.7) % 1;
+        ctx.save(); ctx.globalAlpha = 1 - k;
+        text(k < 0.5 ? 'z' : 'Z', h.x + 20 + k * 18, bottom - im.height * h.info.scale - 10 - k * 40, 18 + k * 10, '#d6ffb0', 'center');
+        ctx.restore();
+      }
       if (h.carrying) {
         const mi = img['mushroom_' + h.carrying];
         drawSprite(ctx, mi, h.x - h.dir * 10, bottom - im.height * h.info.scale * 0.55, MUSH_SCALE * 0.5, false, 1, h.dir * 0.4);
@@ -1921,6 +2013,16 @@
     }
     const k = m.anim;
     const sway = Math.sin(t * 1.1 + m.x) * 0.012;
+    if (m.kind === 'glow' && (state.dark || 0) > 0.05) { // shines in the dark
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      glowDot(m.x, base - 60, 160 + Math.sin(t * 2) * 12, '120,230,255', 0.35 * state.dark);
+      ctx.restore();
+    }
+    if (m.kind === 'toxic') { // a faint poison haze
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      glowDot(m.x, base - 40, 70 + Math.sin(t * 3 + m.x) * 6, '150,230,90', 0.12);
+      ctx.restore();
+    }
     if (canSpore(m) && mode === 'play') {
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
@@ -1958,7 +2060,7 @@
     }
     ctx.restore();
     if (m.mother) {
-      const nm = m.species ? TXT.forest.species[m.species] : 'ребёнок';
+      const nm = m.kind && m.kind !== 'normal' ? TXT.kinds.names[m.kind].toLowerCase() : m.species ? TXT.forest.species[m.species] : 'ребёнок';
       const stopped = m.tree && !m.tree.allied;
       text(stopped ? nm + ' · ' + TXT.forest.stopped : nm, m.x, y - 15, 12, stopped ? '#ffb39a' : 'rgba(255,240,210,0.85)', 'center', 600);
     }
@@ -2289,7 +2391,7 @@
       const label = target.mother ? 'Ребёнок' : 'Гриб';
       text(label + ': стадия ' + target.stage + ' → ' + (target.stage + 1) + '  (показать)', px + 16, y + 12, 14, 'rgba(247,232,198,0.85)', 'left', 600);
       buttons.push({ x: px, y, w: pw, h: 24, label: 'goto', onClick: () => centerOn(target.x, GROUND_Y + 60) });
-      const need = STAGES[target.stage];
+      const need = needFor(target);
       let i = 0, have = 0, total = 0;
       for (const t of RES_ORDER) {
         if (!need[t]) continue;
@@ -2996,6 +3098,12 @@
       if (r.dead || r.x < v.x0 || r.x > v.x1 || r.y < v.y0 || r.y > v.y1) continue;
       glowDot(r.x, r.y, r.size * 0.7, RES[r.type].glow, 0.3 * dark);
     }
+    for (const m of state.mushrooms) { // glowing mushrooms light up the night around them
+      if (m.kind !== 'glow' || m.stage < 1 || !visibleX(m.x)) continue;
+      const br = 0.85 + 0.15 * Math.sin(state.t * 2 + m.x);
+      glowDot(m.x, GROUND_Y - 40, 260, '110,220,255', 0.32 * dark * br);
+      glowDot(m.x, GROUND_Y - 70, 90, '200,250,255', 0.55 * dark * br);
+    }
     for (let i = 0; i < 16; i++) { // fireflies over the grass
       const fx = cam.x + ((i * 137 + state.t * 18 * (1 + (i % 3))) % VW());
       const fy = GROUND_Y - 30 - 70 * Math.abs(Math.sin(state.t * 0.6 + i));
@@ -3080,7 +3188,7 @@
 
   function mushImg(m, stage) {
     const name = 'mushroom_' + stage;
-    const f = m.species && SPECIES_FILTER[m.species];
+    const f = (m.kind && m.kind !== 'normal' && KINDS[m.kind].filter) || (m.species && SPECIES_FILTER[m.species]);
     return f ? tinted(name, f) : img[name];
   }
 
@@ -3649,7 +3757,7 @@
     ctx.setTransform(RS, 0, 0, RS, 0, 0); // screen space
     drawFlyers();
     drawRainOverlay();
-    if (mode === 'play' || mode === 'paused') { drawHud(); drawRainPanel(); drawDayClock(); drawTutorial(); }
+    if (mode === 'play' || mode === 'paused') { drawHud(); drawRainPanel(); drawKindPanel(); drawDayClock(); drawTutorial(); }
     if (mode === 'paused') drawPaused();
     if (mode === 'menu') drawMenu();
     if (mode === 'intro') drawIntro();
@@ -3705,6 +3813,7 @@
     updateTutorial(dt);
     updateRain(dt);
     updateDayNight(dt);
+    updateGut(dt);
     if (state.t - (state.savedAt || 0) > 20) saveMid(); // autosave
     updateTrees(dt);
     updateNets(dt);
@@ -3861,6 +3970,7 @@
     if (e.key === 'Escape') { if (state.sporeFrom) state.sporeFrom = null; else if (mode === 'play') openMenu(); }
     if (['r', 'R', 'к', 'К'].includes(e.key) && mode === 'play') enterLevel(levelIndex, true);
     if (mode === 'play' && e.key === RAINS.good.key) callRain('good');
+    for (const k of KIND_ORDER) if (mode === 'play' && e.key === KINDS[k].key) { state.sproutKind = k; msg(TXT.kinds.picked[k], 3); }
     if (mode === 'play' && e.key === RAINS.storm.key) callRain('storm');
   });
   window.addEventListener('keyup', (e) => { if (state) state.keys.delete(KEYMAP[e.key] || e.key); });
@@ -3877,7 +3987,7 @@
   const r1 = (v) => Math.round(v * 10) / 10;
 
   function baseCounts() {
-    const ms = state.mushrooms;
+    const ms = state.mushrooms.filter(counts);
     return { roots: ms.filter((m) => !m.mother).length, kids: ms.filter((m) => m.mother && m.stage >= CHILD_GOAL_STAGE).length,
       total: ms.length, ripe: ms.filter((m) => m.stage >= RIPE).length };
   }
@@ -3894,7 +4004,7 @@
       res: S.resources.filter((r) => !r.dead).map((r) => [r.type, r1(r.x), r1(r.y), r.s === 'water_pool' ? 1 : 0, r.amount, r.connected ? r.node : -1]),
       decor: S.decor.map((d) => [d.s, r1(d.x), +d.scale.toFixed(3), d.flip ? 1 : 0, d.layer, d.robin ? 1 : 0]), // keep order: trees point into it
       trees: S.trees.map((t) => [S.decor.indexOf(t.d), t.allied ? 1 : 0, t.node, t.root, +t.trust.toFixed(2), r1(t.payT), +t.health.toFixed(3), t.dead ? 1 : 0, t.paidOnce ? 1 : 0]),
-      mush: S.mushrooms.map((m) => [r1(m.x), m.node, m.root, m.mother ? S.mushrooms.indexOf(m.mother) : -1, m.stage, m.species || '', ti(m.tree), m.ring ? 1 : 0, m.spore ? 1 : 0]),
+      mush: S.mushrooms.map((m) => [r1(m.x), m.node, m.root, m.mother ? S.mushrooms.indexOf(m.mother) : -1, m.stage, m.species || '', ti(m.tree), m.ring ? 1 : 0, m.spore ? 1 : 0, m.kind || 'normal']),
       nets: S.nets.filter((n) => !n.dead).map((n) => ({ kind: n.kind, x: r1(n.x), strength: n.strength, mushStage: n.mushStage,
         nodes: n.nodes.map((q) => [r1(q.x), r1(q.y), q.parent, q.dead ? 1 : 0]), tips: n.tips, contact: n.contact,
         target: ti(n.target), biteNode: n.biteNode, seen: n.seen, tradedOnce: n.tradedOnce })),
@@ -3934,7 +4044,7 @@
       const r = makeResource(type, x, y, !!big, amount);
       if (node >= 0 && S.nodes[node] && !S.nodes[node].dead) { r.connected = true; r.node = node; r.path = pathToRoot(node); }
     }
-    S.mushrooms = snap.mush.map(([x, node, root, mi, stage, species, tri, ring, spore]) => ({ x, node, root, mother: mi, stage, prevStage: 0, anim: 1, born: 0,
+    S.mushrooms = snap.mush.map(([x, node, root, mi, stage, species, tri, ring, spore, kind]) => ({ x, node, root, mother: mi, stage, prevStage: 0, anim: 1, born: 0, kind: kind || 'normal',
       species: species || undefined, tree: tri >= 0 ? S.trees[tri] : undefined, ring: !!ring, spore: !!spore }));
     for (const m of S.mushrooms) m.mother = m.mother >= 0 ? S.mushrooms[m.mother] : null;
     for (const m of S.mushrooms) if (m.tree) m.tree.kids.push(m);
