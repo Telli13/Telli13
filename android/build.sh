@@ -11,7 +11,7 @@ cp -r res/. "$B/res/"
 # the game: page, code and only the sprites it loads
 cp ../index.html "$B/assets/"
 cp ../src/*.js "$B/assets/src/"
-cp -r ../art/sprites "$B/assets/art/"
+cp -r ../art/sprites ../art/voice ../art/fonts "$B/assets/art/"
 # launcher icon from the ripe mushroom sprite
 python3 - "$B/res" <<'PY'
 import sys, os

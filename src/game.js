@@ -5,6 +5,7 @@
  * stock grows mushrooms on the surface through 6 stages.
  *
  * v2: levels, dangers (grubs, hedgehog, rabbit, squirrel), spore reproduction.
+ * v18: synthesized music and sound effects, a narrated intro, 3D titles (src/audio.js).
  * v17: forest events: a tree's request, drought, leaf fall, a swarm of pests.
  * v16: mushroom kinds to choose (death cap, decoy, glowing) and mutations picked after each level.
  * v15: autosave inside a level (every 20 s, on pause, menu and leaving the app) and Continue.
@@ -571,6 +572,7 @@
         if (rock) {
           rock.shake = 0.35;
           state.hitRock = true;
+          snd('rock', px);
           state.fx.push({ kind: 'blocked', x: px, y: py, t: 0, life: 0.9 });
           msg('Камень! Грибница не может пройти — обойдите его', 2.2);
         } else if (py < SOIL_TOP + 8) {
@@ -626,6 +628,7 @@
       tip = addTip(i, Math.atan2(y - n.y, x - n.x), { x, y }, 0, PLAYER_SPEED * (hasMut('fast') ? 1.4 : 1), true);
     }
     state.grewOnce = true;
+    snd('grow', x);
     const players = state.tips.filter((t) => t.player);
     if (players.length > MAX_PLAYER_TIPS) players[0].alive = false;
     return tip;
@@ -710,6 +713,7 @@
     state.mushrooms.push(child);
     burst(n.x, GROUND_Y, '255,220,140', 14);
     msg('Из корней проклюнулся гриб-ребёнок!', 2.5);
+    snd('sprout', n.x);
     return true;
   }
 
@@ -753,6 +757,7 @@
   // what happens to an animal after its meal
   function afterMeal(h, m) {
     if (m.kind === 'toxic') {
+      snd('poison', m.x);
       h.poison = (h.poison || 0) + 1;
       h.wary = { x: m.x, until: state.t + WARY_TIME };
       burst(h.ground ? h.x : h.x, h.ground ? GROUND_Y - 20 : h.y, '150,230,90', 16);
@@ -818,6 +823,7 @@
     m.stage++;
     m.anim = 0;
     state.growCooldown = 0.9;
+    snd(m.stage === RIPE ? 'ripe' : 'stage', m.x);
     burst(m.x, GROUND_Y - 30, '255,210,110', 18);
     if (!m.mother && m.stage === CHILD_MIN_STAGE && state.L.maxMushrooms > 1 && !state.motherReadyShown) {
       state.motherReadyShown = true;
@@ -836,6 +842,7 @@
   }
 
   function loseMushroom(m, who) {
+    snd('lose', m.x);
     state.lost++;
     burst(m.x, GROUND_Y - 20, '200,120,60', 18);
     const info = HUNTERS[who];
@@ -868,6 +875,7 @@
     for (let i = 0; i < 26; i++) cloud.dots.push({ ox: rr(-30, 30), oy: rr(-24, 24), ph: rr(0, 6) });
     state.spores.push(cloud);
     msg('Споры летят!', 2);
+    snd('spores', m.x);
   }
 
   function updateSpores(dt) {
@@ -895,6 +903,7 @@
       if (dist(n.x, n.y, r.x, r.y) <= r.radius + 6) {
         r.connected = true;
         state.fedOnce = true;
+        snd('touch', r.x);
         r.node = nodeIdx;
         r.path = pathToRoot(nodeIdx);
         state.fx.push({ kind: 'ring', x: r.x, y: r.y, t: 0, life: 0.8, color: RES[r.type].glow });
@@ -996,6 +1005,7 @@
   }
 
   function scareHunter(h) {
+    snd('scare', h.x);
     h.state = 'flee';
     h.target = null;
     h.dir = h.x < cam.x + VW() / 2 ? -1 : 1;
@@ -1044,6 +1054,7 @@
       h.x = m.x + (rand() < 0.5 ? -1 : 1) * 900;
       h.y = 60;
     }
+    snd(h.kind === 'bird' ? 'swoop' : 'alert', m.x);
     msg(h.info.name + (h.kind === 'bird' ? ' летит к ' : ' идёт к ') + (m.mother ? 'грибу-ребёнку' : 'грибу') + '! Кликните, чтобы спугнуть', 3);
   }
 
@@ -1058,7 +1069,7 @@
       case 'approach': {
         if (!targetValid(h)) { h.state = 'return'; break; }
         const side = h.x < h.target.x ? -1 : 1;
-        if (moveToward(h, h.target.x + side * 46, h.info.speed, dt)) { h.state = 'eat'; h.eatT = 0; h.dir = -side; }
+        if (moveToward(h, h.target.x + side * 46, h.info.speed, dt)) { h.state = 'eat'; h.eatT = 0; h.dir = -side; snd('munch', h.x); }
         h.y = bounce();
         break;
       }
@@ -1113,7 +1124,7 @@
       const tx = h.target.x - 20, ty = mushroomBox(h.target).y - 4;
       const d = dist(h.x, h.y, tx, ty);
       h.dir = tx >= h.x ? 1 : -1;
-      if (d < 6) { h.state = 'eat'; h.eatT = 0; return; }
+      if (d < 6) { h.state = 'eat'; h.eatT = 0; snd('munch', h.x); return; }
       const sp = Math.min(d, h.info.speed * dt);
       h.x += (tx - h.x) / d * sp;
       h.y += (ty - h.y) / d * sp;
@@ -1194,7 +1205,7 @@
     if (state.L.hunters.includes('bird')) { t.active = false; return; }
     if (!t.active) {
       t.wait -= dt;
-      if (t.wait <= 0) { t.active = true; t.dir = rand() < 0.5 ? 1 : -1; t.x = cam.x + (t.dir > 0 ? -120 : VW() + 120); t.baseY = rr(70, 200); }
+      if (t.wait <= 0) { snd('bird', cam.x + VW() / 2, { vol: 0.6 }); t.active = true; t.dir = rand() < 0.5 ? 1 : -1; t.x = cam.x + (t.dir > 0 ? -120 : VW() + 120); t.baseY = rr(70, 200); }
     } else {
       t.x += t.dir * 210 * dt;
       t.y = t.baseY + Math.sin(state.t * 5) * 14;
@@ -1285,6 +1296,7 @@
       p.x = s.x; p.y = s.y;
     }
     state.pests.push(p);
+    snd('pest', p.x);
     if (!state.pestWarned[kind]) { state.pestWarned[kind] = true; msg(info.first, 3.5); }
     return true;
   }
@@ -1372,6 +1384,7 @@
   }
 
   function hitPest(p) {
+    snd('squeak', p.x);
     p.hp--;
     p.hurt = 0.3;
     state.fx.push({ kind: 'ring', x: p.x, y: p.y, t: 0, life: 0.6, color: '255,120,90' });
@@ -1489,6 +1502,8 @@
     progress.unlocked = Math.max(progress.unlocked, Math.min(LEVELS.length, levelIndex + 2));
     saveProgress();
     mode = 'won';
+    state.wonAt = state.t;
+    snd('win');
     for (const m of state.mushrooms) burst(m.x, GROUND_Y - 60, '255,220,140', 16);
   }
 
@@ -2358,6 +2373,10 @@
   function drawHud() {
     button(14, 14, 120, 44, '☰ Уровни', () => openMenu(), { size: 18 });
     button(142, 14, 52, 44, mode === 'paused' ? '▶' : '❚❚', togglePause, { size: 18 });
+    if (AUDIO) {
+      button(200, 14, 52, 44, AUDIO.music ? '♪' : '♪̸', () => { AUDIO.unlock(); msg(AUDIO.toggleMusic() ? TXT.audio.musicOn : TXT.audio.musicOff, 1.6); }, { size: 22 });
+      button(258, 14, 52, 44, AUDIO.sound ? '🔊' : '🔇', () => { AUDIO.unlock(); msg(AUDIO.toggleSound() ? TXT.audio.soundOn : TXT.audio.soundOff, 1.6); }, { size: 18 });
+    }
 
     panel(HUD.x - HUD.w / 2, HUD.y, HUD.w, HUD.h, 28);
     for (const t of RES_ORDER) {
@@ -2459,7 +2478,7 @@
     dim(0.6);
     const pw = 1180, ph = 580, px = (W - pw) / 2, py = (H - ph) / 2;
     panel(px, py, pw, ph, 24);
-    text('Mycelium Forest', W / 2, py + 62, 54, '#ffd27a', 'center');
+    text3d('Mycelium Forest', W / 2, py + 60, 58, { wave: 0.5 });
     text('Выберите уровень', W / 2, py + 112, 20, 'rgba(247,232,198,0.85)', 'center', 600);
     button(px + 24, py + 24, 150, 44, TXT.menu.intro, () => startStory(true), { size: 18 });
     const mid = menuMid;
@@ -2574,7 +2593,7 @@
     ctx.restore();
     text(TXT.muts[id].name, x + w / 2, y + 30, 19, on ? '#fff1cf' : '#ffd27a', 'center');
     wrap(TXT.muts[id].desc, x + w / 2, y + 62, w - 28, 14, 19, 'rgba(247,232,198,0.9)', 'center');
-    buttons.push({ x, y, w, h, label: 'mut-' + id, onClick: () => { state.mutPick = id; } });
+    buttons.push({ x, y, w, h, label: 'mut-' + id, onClick: () => { state.mutPick = id; snd('mutate'); } });
   }
 
   function mutList() {
@@ -2586,7 +2605,7 @@
     const cards = !last && state.mutChoices && state.mutChoices.length ? state.mutChoices : null;
     const pw = cards ? 900 : 640, ph = cards ? 560 : 360, px = (W - pw) / 2, py = Math.max(20, (H - ph) / 2);
     panel(px, py, pw, ph, 22);
-    text('Уровень пройден!', W / 2, py + 50, 38, '#ffd27a', 'center');
+    text3d('Уровень пройден!', W / 2, py + 50, 44, { t: state.t - (state.wonAt ?? -99), wave: 0.6 });
     stars(W / 2, py + 106, state.result.stars, 48);
     text('Время: ' + fmtTime(state.result.time) + '   ·   потеряно грибов: ' + state.lost, W / 2, py + 158, 17, '#f7e8c6', 'center', 600);
     text('3 звезды — быстрее ' + fmtTime(state.L.par), W / 2, py + 184, 14, 'rgba(247,232,198,0.7)', 'center', 600);
@@ -2608,6 +2627,74 @@
     }, { primary: true, size: 20 });
   }
 
+
+  // ---------------------------------------------------------------- sound hooks
+  // Sounds come from src/audio.js; each is panned to where it happens and fades with distance.
+  const AUDIO = window.MF_AUDIO || null;
+  function snd(name, x, o = {}) {
+    if (!AUDIO) return;
+    let pan = 0, vol = o.vol ?? 1;
+    if (x != null && state) {
+      const c = cam.x + VW() / 2, half = VW() / 2;
+      pan = clamp((x - c) / half, -1, 1) * 0.85;
+      const d = Math.abs(x - c) - half;
+      if (d > 0) vol *= clamp(1 - d / 3000, 0.12, 1); // far away: quieter, but still heard
+    }
+    AUDIO.sfx(name, { ...o, pan, vol });
+  }
+
+  // ---------------------------------------------------------------- 3D lettering
+  // Big titles: an extruded, outlined, gradient-lit word whose letters pop in one by one.
+  const TITLE_FONT = '"Russo One", "Trebuchet MS", system-ui, sans-serif';
+  function text3d(str, x, y, size, { t = 99, face = ['#fff6c8', '#ffd04a', '#e7791d'], side = '#6a2f0c', depth = 0.12, wave = 1 } = {}) {
+    ctx.save();
+    ctx.font = `${size}px ${TITLE_FONT}`;
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    const letters = [...str];
+    const widths = letters.map((ch) => ctx.measureText(ch).width);
+    const total = widths.reduce((a, b) => a + b, 0);
+    let lx = x - total / 2;
+    const ext = Math.max(3, Math.round(size * depth));
+    letters.forEach((ch, i) => {
+      const k = clamp(t * 9 - i * 0.55, 0, 1); // each letter pops in after the one before
+      if (k <= 0) { lx += widths[i]; return; }
+      const pop = k < 1 ? easeOutBack(k) : 1;
+      const bob = Math.sin(state.t * 2.4 - i * 0.45) * size * 0.035 * wave;
+      const cx = lx + widths[i] / 2, cy = y + bob - (1 - Math.min(1, k * 1.4)) * size * 0.6;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.scale(pop, pop);
+      ctx.rotate(Math.sin(state.t * 1.7 - i * 0.6) * 0.03 * wave);
+      ctx.globalAlpha *= Math.min(1, k * 2);
+      // shadow on the ground behind
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fillText(ch, -widths[i] / 2 + ext * 0.9, ext * 1.4);
+      // the extruded side
+      for (let d = ext; d > 0; d--) {
+        ctx.fillStyle = d === ext ? '#2b1306' : side;
+        ctx.fillText(ch, -widths[i] / 2 + d * 0.45, d);
+      }
+      // the lit face
+      const g = ctx.createLinearGradient(0, -size * 0.5, 0, size * 0.45);
+      g.addColorStop(0, face[0]); g.addColorStop(0.5, face[1]); g.addColorStop(1, face[2]);
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = Math.max(3, size * 0.09);
+      ctx.strokeStyle = '#2b1306';
+      ctx.strokeText(ch, -widths[i] / 2, 0);
+      ctx.fillStyle = g;
+      ctx.fillText(ch, -widths[i] / 2, 0);
+      // a shine along the top edge
+      ctx.save();
+      ctx.beginPath(); ctx.rect(-widths[i], -size, widths[i] * 2, size * 0.42); ctx.clip();
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.fillText(ch, -widths[i] / 2, 0);
+      ctx.restore();
+      ctx.restore();
+      lx += widths[i];
+    });
+    ctx.restore();
+  }
   // ---------------------------------------------------------------- intro story & first-play tips
   // All their texts live in src/texts.js (window.MF_TEXT).
   const TXT = window.MF_TEXT;
@@ -2624,11 +2711,12 @@
     cam.y = 0;
     state.critters = []; // the only worm in the intro is the one in scene 3
     story = {
-      i: 0, t: 0, fromMenu,
+      i: fromMenu ? 0 : -1, t: 0, fromMenu, // -1: the title screen that waits for a tap
       branches: makeStoryBranches(),
       worm: { x: state.startX + 380, y: GROUND_Y + 235 },
     };
     mode = 'story';
+    if (fromMenu && AUDIO) { AUDIO.unlock(); AUDIO.preloadVoices(); AUDIO.voice(1); }
   }
 
   function makeStoryBranches() {
@@ -2655,9 +2743,11 @@
   }
 
   function storyNext() {
+    if (AUDIO && story.i < 0) { AUDIO.unlock(); AUDIO.preloadVoices(); AUDIO.sfx('title'); }
     story.i++;
     story.t = 0;
-    if (story.i >= TXT.intro.screens.length) endStory();
+    if (story.i >= TXT.intro.screens.length) { endStory(); return; }
+    if (AUDIO) { AUDIO.voice(story.i + 1); if (story.i > 0) AUDIO.sfx('whoosh'); }
   }
 
   function endStory() {
@@ -2729,7 +2819,7 @@
     drawUnderground();
     drawResources();
     // the soil starts dark and lights up as the camera goes down
-    const dark = story.i === 0 ? 0.8 : story.i === 1 ? 0.8 * (1 - clamp(story.t / 1.8, 0, 1)) : 0;
+    const dark = story.i <= 0 ? 0.8 : story.i === 1 ? 0.8 * (1 - clamp(story.t / 1.8, 0, 1)) : 0;
     if (dark > 0) {
       ctx.fillStyle = `rgba(8,4,2,${dark})`;
       ctx.fillRect(cam.x - 10, GROUND_Y + 30, VW() + 20, WH);
@@ -2738,7 +2828,7 @@
     drawSurface();
     // the little beige mushroom in the middle of the forest
     const x = state.startX;
-    if (story.i === 0) {
+    if (story.i <= 0) {
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
       glowDot(x, GROUND_Y - 30, 110 + Math.sin(state.t * 2) * 10, '255,230,170', 0.22);
       ctx.restore();
@@ -2759,21 +2849,24 @@
     }
 
     ctx.setTransform(RS, 0, 0, RS, 0, 0);
+    if (story.i < 0) { // the title screen: a tap here also switches the sound on
+      const k = clamp(story.t / 0.5, 0, 1);
+      ctx.save(); ctx.globalAlpha = 0.5 * k; ctx.fillStyle = '#120b08'; ctx.fillRect(0, 0, W, H); ctx.restore();
+      text3d('Mycelium Forest', W / 2, H * 0.3, 112, { t: story.t * 0.8 });
+      ctx.save();
+      ctx.globalAlpha = (0.65 + 0.35 * Math.sin(state.t * 3)) * clamp(story.t - 1, 0, 1);
+      text3d(TXT.intro.tap, W / 2, H * 0.72, 40, { face: ['#ffffff', '#ffe9b0', '#f2b34c'], depth: 0.08, wave: 0.3 });
+      ctx.restore();
+      ctx.save(); ctx.globalAlpha = 0.7 * clamp(story.t - 1.4, 0, 1);
+      text(TXT.intro.sound, W / 2, H * 0.72 + 52, 17, '#f7e8c6', 'center', 600);
+      ctx.restore();
+      return;
+    }
     const line = TXT.intro.screens[story.i];
-    const a = clamp(story.t / 0.6, 0, 1);
-    const ty = (story.i === 0 ? 170 : 680) + (1 - a) * 18;
-    ctx.save();
-    ctx.globalAlpha = a;
-    ctx.font = '800 66px "Trebuchet MS", system-ui, sans-serif';
-    const tw = ctx.measureText(line).width;
-    roundRect(W / 2 - tw / 2 - 40, ty - 56, tw + 80, 112, 30);
-    ctx.fillStyle = 'rgba(20,11,6,0.55)';
-    ctx.fill();
-    ctx.restore();
-    ctx.save();
-    ctx.globalAlpha = a;
-    text(line, W / 2, ty + 2, 66, story.i === 2 ? '#ffb39a' : '#ffe2a0', 'center', 800);
-    ctx.restore();
+    const ty = story.i === 0 ? 190 : H - 230;
+    const col = story.i === 2 ? { face: ['#ffe6dc', '#ff8a6a', '#c0301e'], side: '#5a1208' }
+      : story.i === 1 ? { face: ['#f4ffd8', '#a6e86a', '#3f9a2c'], side: '#173f10' } : {};
+    text3d(line, W / 2, ty, 84, { t: story.t, ...col });
 
     // progress dots + how to continue
     for (let i = 0; i < TXT.intro.screens.length; i++) {
@@ -2900,6 +2993,7 @@
     if (state.clouds < R.cost) { msg(TXT.rain.need + ' (' + Math.floor(state.clouds) + '/' + R.cost + ')', 2); return; }
     state.clouds -= R.cost;
     // it rains over the whole forest
+    if (AUDIO) AUDIO.setRain(kind);
     state.rain = { kind, t: 0, dur: R.dur, x0: 0, x1: WW, drops: [], spawnT: 0.8, hits: [1.0, 3.5], flash: 0, spawned: 0 };
     msg(kind === 'good' ? TXT.rain.goodCast : TXT.rain.stormCast, 3);
   }
@@ -2949,10 +3043,12 @@
       if (raining && rand() < dt * 0.9) r.flash = 1; // lightning
       while (r.hits.length && r.t >= r.hits[0]) { r.hits.shift(); stormStrike(r); }
     }
+    if (!raining && r.drops.length && !r.quiet) { r.quiet = true; if (AUDIO) AUDIO.setRain(null); }
     if (!raining && !r.drops.length) state.rain = null;
   }
 
   function stormStrike(r) {
+    snd('thunder');
     r.flash = 1;
     const inside = (x) => x >= r.x0 - 40 && x <= r.x1 + 40;
     let washed = 0, scared = 0;
@@ -3100,6 +3196,7 @@
     if (d.key !== state.phase) {
       state.phase = d.key;
       msg(TXT.daynight[d.key], 3.5);
+      if (d.key === 'dawn') snd('dawn'); else if (d.key === 'night') snd('night');
       if (d.key === 'dawn') for (const p of state.pests) if (p.kind === 'shade' && p.state !== 'flee') pestFlee(p);
     }
     if (d.key === 'night') {
@@ -3266,6 +3363,7 @@
       t.payT = 8;
       t.kidT = 2;
       state.fx.push({ kind: 'ring', x: t.x, y: GROUND_Y + 90, t: 0, life: 1.2, color: '170,255,140' });
+      snd('union', t.x);
       msg(TXT.forest.union.replace('{tree}', TXT.forest.trees[t.kind]).replace('{kids}', TXT.forest.speciesMany[t.kind]), 4);
     }
   }
@@ -3297,6 +3395,7 @@
         if (Object.keys(want).every((k) => state.counts[k] >= want[k])) {
           for (const k in want) state.counts[k] -= want[k];
           t.sugarQ += t.info.gives + (hasMut('sugar') ? 1 : 0);
+          snd('sugar', t.x, { vol: 0.6 });
           t.trust = Math.min(1, t.trust + 0.34);
           if (!t.paidOnce) { t.paidOnce = true; msg(TXT.forest.paid.replace('{tree}', TXT.forest.trees[t.kind]).replace('{n}', t.info.gives), 3); }
         } else {
@@ -3337,6 +3436,7 @@
       const n = state.nodes[t.node];
       addTip(t.node, Math.atan2(SOIL_TOP + 3 - n.y, x - n.x), { x, y: SOIL_TOP + 3 }, 0, AUTO_SPEED * 1.5, false);
       burst(x, GROUND_Y, '190,255,150', 10);
+      snd('sprout', x);
       if (!state.kidShown[t.kind]) {
         state.kidShown[t.kind] = true;
         msg(TXT.forest.kid.replace('{tree}', TXT.forest.trees[t.kind]).replace('{kid}', TXT.forest.species[t.kind]), 3.5);
@@ -3365,6 +3465,7 @@
     const n = nodes[best];
     state.mushrooms.push({ x: n.x, node: best, root: mother.root, mother, stage: 0, prevStage: 0, anim: 1, born: state.t, ring: true });
     burst(n.x, GROUND_Y, '255,220,140', 12);
+    snd('sprout', n.x);
     if (!state.ringShown) { state.ringShown = true; msg(TXT.forest.ring, 4); }
     return true;
   }
@@ -3602,6 +3703,7 @@
 
   // where your thread meets a rival thread: each side pays, the poorer side loses the branch
   function clash(net, hit) {
+    snd('clash', net.nodes[hit.k].x, { vol: 0.7 });
     const mine = state.counts.sugar, theirs = net.strength;
     const n = net.nodes[hit.k];
     net.front = { x: n.x, y: n.y };
@@ -3727,6 +3829,7 @@
     net.merged = true;
     burst(net.x, GROUND_Y - 40, net.info.color, 26);
     msg(TXT.nets.merged, 4);
+    snd('merge', net.x);
   }
 
   function drawNets() {
@@ -3813,6 +3916,7 @@
       for (let i = 0; i < 4 + levelIndex; i++) spawnPest(pick(kinds));
     }
     state.event = E;
+    snd('gong');
     msg(fill(TXT.events[kind].start, E), 5);
   }
 
@@ -3992,6 +4096,7 @@
     updateTutorial(dt);
     updateRain(dt);
     updateDayNight(dt);
+    if (AUDIO) AUDIO.setNight(state.dark || 0);
     updateGut(dt);
     updateEvents(dt);
     if (state.t - (state.savedAt || 0) > 20) saveMid(); // autosave
@@ -4031,7 +4136,7 @@
 
   function onPress(p, buttonIdx) {
     const hit = hoverTarget(p);
-    if (hit && hit.kind === 'button') { hit.b.onClick(); return; }
+    if (hit && hit.kind === 'button') { if (AUDIO) AUDIO.sfx('click'); hit.b.onClick(); return; }
     if (mode === 'story') { storyNext(); return; }
     if (mode !== 'play') return;
     if (buttonIdx !== 0) { state.drag = { sx: p.sx, sy: p.sy, cx: cam.x, cy: cam.y }; return; }
@@ -4071,6 +4176,7 @@
     return { d: Math.hypot(a.sx - b.sx, a.sy - b.sy) || 1, cx: (a.sx + b.sx) / 2, cy: (a.sy + b.sy) / 2 };
   }
   canvas.addEventListener('pointerdown', (e) => {
+    if (AUDIO) AUDIO.unlock();
     if (!state) return;
     if (e.pointerType === 'touch') {
       touches.set(e.pointerId, toScreen(e));
@@ -4136,6 +4242,7 @@
 
   const KEYMAP = { ц: 'w', ф: 'a', ы: 's', в: 'd', W: 'w', A: 'a', S: 's', D: 'd', Ц: 'w', Ф: 'a', Ы: 's', В: 'd' };
   window.addEventListener('keydown', (e) => {
+    if (AUDIO) AUDIO.unlock();
     if (!state) return;
     const key = KEYMAP[e.key] || e.key;
     if (key.startsWith('Arrow')) e.preventDefault();
@@ -4354,7 +4461,8 @@
     refreshMenuMid();
   }
 
-  loadSprites().then(() => {
+  const fontReady = document.fonts && document.fonts.load ? document.fonts.load('40px "Russo One"').catch(() => {}) : Promise.resolve();
+  Promise.all([loadSprites(), fontReady]).then(() => {
     document.getElementById('loading').remove();
     resize();
     newWorld(Math.min(progress.unlocked, LEVELS.length) - 1);
