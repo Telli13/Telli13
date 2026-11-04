@@ -1385,7 +1385,7 @@
     if (g.roots) lines.push({ text: more ? 'Новые колонии' : 'Колонии со своими корнями', have: has(ms.filter((m) => !m.mother).length, more ? b.roots : 0), need: more ? g.roots - 1 || 1 : g.roots });
     if (g.children) lines.push({ text: more ? 'Новые дети (стадия ' + CHILD_GOAL_STAGE + '+)' : 'Подросшие дети (стадия ' + CHILD_GOAL_STAGE + '+)', have: has(ms.filter((m) => m.mother && m.stage >= CHILD_GOAL_STAGE).length, b.kids), need: g.children });
     if (g.mushrooms) lines.push({ text: more ? 'Новых грибов' : 'Всего грибов', have: has(ms.length, b.total), need: more ? g.mushrooms - 1 : g.mushrooms });
-    if (g.ripeNow) lines.push({ text: (more ? 'Ещё зрелых' : 'Зрелых') + (g.ripeNow > 1 ? ' грибов сразу' : ' гриб'), have: has(ms.filter((m) => m.stage >= RIPE).length, b.ripe), need: g.ripeNow });
+    if (g.ripeNow) lines.push({ text: g.ripeNow > 1 ? (more ? 'Ещё зрелых' : 'Зрелых') + ' грибов сразу' : (more ? 'Ещё зрелый гриб' : 'Зрелый гриб'), have: has(ms.filter((m) => m.stage >= RIPE).length, b.ripe), need: g.ripeNow });
     return lines;
   }
 
