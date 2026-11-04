@@ -5,6 +5,7 @@
  * stock grows mushrooms on the surface through 6 stages.
  *
  * v2: levels, dangers (grubs, hedgehog, rabbit, squirrel), spore reproduction.
+ * v15: autosave inside a level (every 20 s, on pause, menu and leaving the app) and Continue.
  * v14: pause; the campaign forest carries on from level to level and survives a reload.
  * v13: the view fills any screen shape (no black bars).
  * v12: worlds 10x larger (up to 16000 x 4500) with zoom 25-200% (wheel, +/-, pinch).
@@ -1396,6 +1397,7 @@
     if (state.lost >= 4) stars = Math.max(1, stars - 1);
     state.result = { stars, time: state.time };
     if (levelIndex < LEVELS.length - 1) saveCampaign(levelIndex + 1); // the grown forest waits for the next level
+    clearMid();
     progress.stars[levelIndex] = Math.max(progress.stars[levelIndex] || 0, stars);
     progress.unlocked = Math.max(progress.unlocked, Math.min(LEVELS.length, levelIndex + 2));
     saveProgress();
@@ -2354,6 +2356,8 @@
     text('Mycelium Forest', W / 2, py + 62, 54, '#ffd27a', 'center');
     text('Выберите уровень', W / 2, py + 112, 20, 'rgba(247,232,198,0.85)', 'center', 600);
     button(px + 24, py + 24, 150, 44, TXT.menu.intro, () => startStory(true), { size: 18 });
+    const mid = menuMid;
+    if (mid) button(px + pw - 304, py + 24, 280, 44, TXT.save.resume.replace('{n}', mid.level + 1), () => { resumeMid(); }, { primary: true, size: 18 });
     const xs = LEVELS.map((_, i) => px + 110 + i * ((pw - 220) / (LEVELS.length - 1)));
     const ys = LEVELS.map((_, i) => py + 280 + (i % 2 ? 50 : -30));
     ctx.save();
@@ -2421,6 +2425,7 @@
   function togglePause() {
     if (mode === 'play') {
       mode = 'paused';
+      saveMid();
       state.keys.clear();
       if (state.activeTip) state.activeTip = null;
       state.drag = null;
@@ -2448,7 +2453,7 @@
     text('3 звезды — быстрее ' + fmtTime(state.L.par), W / 2, py + 208, 15, 'rgba(247,232,198,0.7)', 'center', 600);
     const last = levelIndex >= LEVELS.length - 1;
     button(px + 30, py + 260, 180, 52, 'Уровни', () => openMenu(), { size: 20 });
-    button(px + 230, py + 260, 180, 52, 'Заново', () => enterLevel(levelIndex), { size: 20 });
+    button(px + 230, py + 260, 180, 52, 'Заново', () => enterLevel(levelIndex, true), { size: 20 });
     button(px + 430, py + 260, 180, 52, last ? 'Финал!' : 'Дальше', () => (last ? openMenu() : continueLevel(levelIndex + 1)), { primary: true, size: 20 });
   }
 
@@ -3700,6 +3705,7 @@
     updateTutorial(dt);
     updateRain(dt);
     updateDayNight(dt);
+    if (state.t - (state.savedAt || 0) > 20) saveMid(); // autosave
     updateTrees(dt);
     updateNets(dt);
     updateAnts(dt);
@@ -3853,7 +3859,7 @@
     if (['p', 'P', 'з', 'З', ' '].includes(e.key) && (mode === 'play' || mode === 'paused')) { e.preventDefault(); togglePause(); return; }
     if (e.key === 'Escape' && mode === 'paused') { togglePause(); return; }
     if (e.key === 'Escape') { if (state.sporeFrom) state.sporeFrom = null; else if (mode === 'play') openMenu(); }
-    if (['r', 'R', 'к', 'К'].includes(e.key) && mode === 'play') enterLevel(levelIndex);
+    if (['r', 'R', 'к', 'К'].includes(e.key) && mode === 'play') enterLevel(levelIndex, true);
     if (mode === 'play' && e.key === RAINS.good.key) callRain('good');
     if (mode === 'play' && e.key === RAINS.storm.key) callRain('storm');
   });
@@ -3880,7 +3886,8 @@
     const S = state;
     const ti = (t) => (t ? S.trees.indexOf(t) : -1);
     return {
-      v: 1, WW, WH, startX: S.startX, counts: { ...S.counts }, clouds: S.clouds, clock: S.clock,
+      v: 1, lvl: levelIndex, time: S.time, lost: S.lost, base: S.base, muts: S.muts || [], cam: { x: cam.x, y: cam.y, z: cam.z },
+      WW, WH, startX: S.startX, counts: { ...S.counts }, clouds: S.clouds, clock: S.clock,
       seen: { kid: S.kidShown, ring: S.ringShown, mother: S.motherReadyShown, warned: S.pestWarned, grub: S.grubWarned, ant: S.antWarned, clouds: S.cloudsShown },
       nodes: S.nodes.map((n) => [r1(n.x), r1(n.y), n.parent, r1(n.w), n.dead ? 1 : 0]),
       rocks: S.rocks.map((r) => [r.s, r1(r.x), r1(r.bottom), +r.scale.toFixed(4), r.flip ? 1 : 0, r1(r.cx), r1(r.cy), r1(r.rx), r1(r.ry)]),
@@ -3939,11 +3946,19 @@
       if (net.target && net.biteNode != null) net.target.infest = net;
       return net;
     });
-    growWorld(L);
-    S.base = baseCounts();
+    S.muts = snap.muts || [];
+    const resume = snap.mid && snap.lvl === li; // a save from inside this very level
+    if (resume) {
+      S.base = snap.base || null;
+      S.time = snap.time || 0;
+      S.lost = snap.lost || 0;
+    } else {
+      growWorld(L);
+      S.base = baseCounts();
+    }
     makeHunters(L);
-    centerOn(S.startX, GROUND_Y + 120);
-    cam.y = 0;
+    if (resume && snap.cam) { cam.z = snap.cam.z; cam.x = snap.cam.x; cam.y = snap.cam.y; clampCam(); }
+    else { centerOn(S.startX, GROUND_Y + 120); cam.y = 0; }
   }
 
   // the forest gets bigger: new ground to the right and below, filled with this level's things
@@ -3973,11 +3988,36 @@
     makeCritters();
   }
 
+  // two saves: the start of the current level (for "again") and the game in progress (for "continue")
+  const MID_KEY = 'mycelium-forest-midlevel-v1';
   function saveCampaign(li) {
     try { localStorage.setItem(CAMP_KEY, JSON.stringify({ level: li, snap: snapshot() })); } catch (e) { /* storage full or blocked */ }
   }
   function loadCampaign() {
     try { const c = JSON.parse(localStorage.getItem(CAMP_KEY) || 'null'); return c && c.snap && c.snap.v === 1 ? c : null; } catch (e) { return null; }
+  }
+  function saveMid() {
+    if (!state || !(mode === 'play' || mode === 'paused')) return;
+    try {
+      const snap = snapshot();
+      snap.mid = true;
+      localStorage.setItem(MID_KEY, JSON.stringify({ level: levelIndex, at: Date.now(), snap }));
+      state.savedAt = state.t;
+    } catch (e) { /* storage full or blocked */ }
+  }
+  function loadMid() {
+    try { const c = JSON.parse(localStorage.getItem(MID_KEY) || 'null'); return c && c.snap && c.snap.v === 1 ? c : null; } catch (e) { return null; }
+  }
+  function clearMid() { try { localStorage.removeItem(MID_KEY); } catch (e) { /* ignore */ } }
+  function resumeMid() {
+    const c = loadMid();
+    if (!c) return false;
+    restoreWorld(c.snap, c.level);
+    buildSoil();
+    rebuildMycelium();
+    mode = 'paused'; // opens on the pause screen: press Continue when ready
+    msg(TXT.save.restored, 3);
+    return true;
   }
 
   // "Next": the same forest goes on growing
@@ -3987,11 +4027,15 @@
     buildSoil();
     rebuildMycelium();
     saveCampaign(li); // the start of this level, for "again" and for a reload
+    clearMid();
     mode = 'intro';
   }
 
   // a level from the menu or "again": the saved forest when it is at this level, otherwise a fresh one
-  function enterLevel(i) {
+  function enterLevel(i, fromStart = false) {
+    const m = !fromStart && loadMid();
+    if (m && m.level === i) { resumeMid(); return; }
+    clearMid();
     const c = loadCampaign();
     if (c && c.level === i && i > 0) {
       restoreWorld(c.snap, i);
@@ -4010,9 +4054,14 @@
     mode = 'intro';
   }
 
+  let menuMid = null;
+  function refreshMenuMid() { const m = loadMid(); menuMid = m && m.level < progress.unlocked ? m : null; }
+
   function openMenu() {
+    saveMid();
     if (state) state.sporeFrom = null;
     mode = 'menu';
+    refreshMenuMid();
   }
 
   loadSprites().then(() => {
@@ -4024,6 +4073,7 @@
     const params = new URLSearchParams(location.search);
     if (params.get('level')) startLevel(clamp(Number(params.get('level')) - 1, 0, LEVELS.length - 1));
     else if (!progress.introSeen || params.get('intro')) startStory(false); // first launch only
+    refreshMenuMid();
     requestAnimationFrame((t) => { last = t; requestAnimationFrame(frame); });
   }).catch((err) => {
     document.getElementById('loading').textContent = err.message + '. Запустите игру через локальный сервер (см. README).';
@@ -4038,6 +4088,6 @@
     get timeScale() { return timeScale; }, set timeScale(v) { timeScale = Math.max(1, Math.min(16, v | 0)); },
     scareHunter, hitPest, scareAnt, releaseSpores, sporeSpotProblem, mergeKin, callRain,
     growthTarget, canSpore, goalLines, nearestNode, openMenu,
-    get buttons() { return buttons; }, zoomAt, togglePause, continueLevel, enterLevel, snapshot,
+    get buttons() { return buttons; }, zoomAt, togglePause, continueLevel, enterLevel, snapshot, saveMid, resumeMid,
   };
 })();
