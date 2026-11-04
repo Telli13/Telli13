@@ -5,6 +5,7 @@
  * stock grows mushrooms on the surface through 6 stages.
  *
  * v2: levels, dangers (grubs, hedgehog, rabbit, squirrel), spore reproduction.
+ * v17: forest events: a tree's request, drought, leaf fall, a swarm of pests.
  * v16: mushroom kinds to choose (death cap, decoy, glowing) and mutations picked after each level.
  * v15: autosave inside a level (every 20 s, on pause, menu and leaving the app) and Continue.
  * v14: pause; the campaign forest carries on from level to level and survives a reload.
@@ -302,7 +303,7 @@
       clock: 5, dark: 0, phase: 'day', shadeTimer: 3,
       trees: [], ringT: 5, kidShown: {}, ringShown: false, nets: [],
       grewOnce: false, fedOnce: false, hitRock: false,
-      base: null, paused: false, sproutKind: 'normal', gut: [], muts: [], mutChoices: null, mutPick: null,
+      base: null, paused: false, sproutKind: 'normal', event: null, eventT: rr(90, 130), gut: [], muts: [], mutChoices: null, mutPick: null,
     };
     if (blank) return;
     makeDecor();
@@ -958,7 +959,7 @@
 
     for (const f of state.flyers) {
       f.t += dt / 0.75;
-      if (f.t >= 1) { f.done = true; state.counts[f.type]++; state.bump[f.type] = 1; if (f.type === 'water') addClouds(1); }
+      if (f.t >= 1) { f.done = true; state.counts[f.type]++; state.bump[f.type] = 1; if (f.type === 'water' && !droughtNow()) addClouds(1); }
     }
     state.flyers = state.flyers.filter((f) => !f.done);
     for (const t of RES_ORDER) state.bump[t] = Math.max(0, state.bump[t] - dt * 3);
@@ -2895,6 +2896,7 @@
   function callRain(kind) {
     const R = RAINS[kind];
     if (state.rain) { msg(TXT.rain.busy, 1.6); return; }
+    if (droughtNow()) { msg(TXT.events.drought.noRain, 2.5); return; }
     if (state.clouds < R.cost) { msg(TXT.rain.need + ' (' + Math.floor(state.clouds) + '/' + R.cost + ')', 2); return; }
     state.clouds -= R.cost;
     // it rains over the whole forest
@@ -3781,6 +3783,134 @@
     }
   }
 
+
+  // ---------------------------------------------------------------- forest events
+  // From level 2 on, every few minutes something happens in the forest:
+  //   request  — a tree asks for water or minerals in time; give it and it pays well
+  //   drought  — no clouds gather and water deposits dry up
+  //   leaffall — leaves fall and the top soil fills with organic matter
+  //   swarm    — a wave of pests comes up from the deep at once
+  const EVENT_EVERY = [150, 220];
+  const EVENTS = {
+    request:  { dur: 120 },
+    drought:  { dur: 60 },
+    leaffall: { dur: 25 },
+    swarm:    { dur: 30 },
+  };
+
+  function startEvent(kind) {
+    const E = { kind, t: 0, dur: EVENTS[kind].dur };
+    if (kind === 'request') {
+      const trees = state.trees.filter((t) => !t.dead && visibleTreeScore(t) < 3000);
+      if (!trees.length) return;
+      E.tree = trees.sort((a, b) => visibleTreeScore(a) - visibleTreeScore(b))[0];
+      E.res = E.tree.info.wants.water ? 'water' : 'mineral';
+      E.need = 5;
+      E.prize = 6;
+    }
+    if (kind === 'swarm') {
+      const kinds = state.L.pests ? state.L.pests.kinds : ['grub', 'woodlouse'];
+      for (let i = 0; i < 4 + levelIndex; i++) spawnPest(pick(kinds));
+    }
+    state.event = E;
+    msg(fill(TXT.events[kind].start, E), 5);
+  }
+
+  function visibleTreeScore(t) { return nearestNode(t.x, GROUND_Y + 110).d; }
+  function fill(str, E) {
+    return str.replace('{tree}', E.tree ? TXT.forest.trees[E.tree.kind] : '').replace('{n}', E.need || '')
+      .replace('{res}', E.res ? TXT.events.res[E.res] : '').replace('{prize}', E.prize || '');
+  }
+
+  function giveRequest() {
+    const E = state.event;
+    if (!E || E.kind !== 'request' || E.done) return;
+    if (state.counts[E.res] < E.need) { msg(fill(TXT.events.request.short, E), 2.5); return; }
+    state.counts[E.res] -= E.need;
+    state.counts.sugar += E.prize;
+    E.tree.health = 1;
+    E.tree.trust = 1;
+    E.done = true;
+    E.t = E.dur - 2;
+    burst(E.tree.x, GROUND_Y - 120, '190,255,150', 24);
+    msg(fill(TXT.events.request.done, E), 4);
+  }
+
+  function updateEvents(dt) {
+    if (levelIndex < 1) return;
+    const E = state.event;
+    if (!E) {
+      state.eventT -= dt;
+      if (state.eventT <= 0) { state.eventT = rr(EVENT_EVERY[0], EVENT_EVERY[1]); startEvent(pick(Object.keys(EVENTS))); }
+      return;
+    }
+    E.t += dt;
+    if (E.kind === 'drought') {
+      E.dryT = (E.dryT || 0) - dt;
+      if (E.dryT <= 0) { // the water in the soil dries up, a drop at a time
+        E.dryT = 4;
+        const w = state.resources.filter((r) => r.type === 'water' && !r.dead && r.amount > 0);
+        if (w.length) { const r = pick(w); r.amount--; if (r.amount <= 0) { r.dead = true; r.fade = 0; } }
+      }
+    }
+    if (E.kind === 'leaffall') {
+      E.dropT = (E.dropT || 0) - dt;
+      if (E.dropT <= 0) {
+        E.dropT = 0.9;
+        for (let k = 0; k < 20; k++) { // leaves land on the surface and soak into the top soil
+          const x = rr(cam.x + 60, cam.x + VW() - 60), y = rr(SOIL_TOP + 40, SOIL_TOP + 260);
+          if (!freeSpot(x, y, 26)) continue;
+          const r = makeResource('organic', x, y, false, 2); r.fade = -1;
+          break;
+        }
+      }
+    }
+    if (E.t >= E.dur) {
+      if (E.kind === 'request' && !E.done) { E.tree.health = Math.max(0.05, E.tree.health - 0.4); E.tree.trust = Math.max(0.05, E.tree.trust - 0.5); msg(fill(TXT.events.request.fail, E), 4); }
+      else if (E.kind !== 'request') msg(TXT.events[E.kind].end, 3);
+      state.event = null;
+    }
+  }
+
+  const droughtNow = () => state.event && state.event.kind === 'drought';
+
+  function drawEventWorld() {
+    const E = state.event;
+    if (!E) return;
+    if (E.kind === 'leaffall') { // falling leaves
+      const im = img.leaf, sc = 30 / im.width;
+      for (let i = 0; i < 40; i++) {
+        const fx = cam.x + ((i * 233 + state.t * 40) % VW());
+        const fy = cam.y + ((i * 97 + state.t * (60 + (i % 5) * 12)) % Math.max(1, GROUND_Y - cam.y));
+        if (fy > GROUND_Y) continue;
+        drawSprite(ctx, im, fx + Math.sin(state.t * 2 + i) * 16, fy, sc, i % 2 === 0, 0.9, Math.sin(state.t * 3 + i) * 0.8);
+      }
+    }
+    if (E.kind === 'request' && E.tree && !E.done) { // the asking tree is marked
+      const t = E.tree;
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      glowDot(t.x, GROUND_Y - 160, 140 + Math.sin(state.t * 3) * 14, '255,220,120', 0.25);
+      ctx.restore();
+      text('!', t.x, GROUND_Y - 300 + Math.sin(state.t * 4) * 6, 36, '#ffd27a', 'center');
+    }
+  }
+
+  function drawEventScreen() {
+    const E = state.event;
+    if (!E) return;
+    if (E.kind === 'drought') { ctx.save(); ctx.fillStyle = 'rgba(255,170,60,0.10)'; ctx.fillRect(0, 0, W, H); ctx.restore(); }
+    const pw = 460, ph = E.kind === 'request' && !E.done ? 96 : 62, px = W / 2 - pw / 2, py = H - ph - 96;
+    panel(px, py, pw, ph, 16);
+    text(TXT.events[E.kind].title, px + 16, py + 20, 17, '#ffd27a');
+    text(fmtTime(Math.max(0, E.dur - E.t)), px + pw - 16, py + 20, 15, 'rgba(247,232,198,0.8)', 'right', 600);
+    text(fill(TXT.events[E.kind].line, E), px + 16, py + 44, 14, '#f7e8c6', 'left', 600);
+    if (E.kind === 'request' && !E.done) {
+      const ok = state.counts[E.res] >= E.need;
+      text(TXT.events.res[E.res] + ': ' + Math.min(state.counts[E.res], E.need) + '/' + E.need, px + 16, py + 74, 15, ok ? '#9be86b' : '#f7e8c6');
+      button(px + pw - 156, py + 56, 140, 32, TXT.events.give, giveRequest, { size: 15, primary: ok });
+    }
+    if (E.kind === 'request' && E.tree) buttons.push({ x: px, y: py, w: pw - 170, h: ph, label: 'ev-goto', onClick: () => centerOn(E.tree.x, GROUND_Y) });
+  }
   function render() {
     if (mode === 'story') { renderStory(); return; }
     buttons = [];
@@ -3801,11 +3931,12 @@
     if (mode === 'play') drawTutorialFocus();
     drawWorldFx();
     drawRain();
+    drawEventWorld();
     drawNight();
     ctx.setTransform(RS, 0, 0, RS, 0, 0); // screen space
     drawFlyers();
     drawRainOverlay();
-    if (mode === 'play' || mode === 'paused') { drawHud(); drawRainPanel(); drawKindPanel(); drawDayClock(); drawTutorial(); }
+    if (mode === 'play' || mode === 'paused') { drawHud(); drawRainPanel(); drawKindPanel(); drawDayClock(); drawEventScreen(); drawTutorial(); }
     if (mode === 'paused') drawPaused();
     if (mode === 'menu') drawMenu();
     if (mode === 'intro') drawIntro();
@@ -3862,6 +3993,7 @@
     updateRain(dt);
     updateDayNight(dt);
     updateGut(dt);
+    updateEvents(dt);
     if (state.t - (state.savedAt || 0) > 20) saveMid(); // autosave
     updateTrees(dt);
     updateNets(dt);
@@ -4246,6 +4378,6 @@
     get timeScale() { return timeScale; }, set timeScale(v) { timeScale = Math.max(1, Math.min(16, v | 0)); },
     scareHunter, hitPest, scareAnt, releaseSpores, sporeSpotProblem, mergeKin, callRain,
     growthTarget, canSpore, goalLines, nearestNode, openMenu,
-    get buttons() { return buttons; }, zoomAt, togglePause, continueLevel, enterLevel, snapshot, saveMid, resumeMid,
+    get buttons() { return buttons; }, startEvent, giveRequest, zoomAt, togglePause, continueLevel, enterLevel, snapshot, saveMid, resumeMid,
   };
 })();
