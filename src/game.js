@@ -5,6 +5,7 @@
  * stock grows mushrooms on the surface through 6 stages.
  *
  * v2: levels, dangers (grubs, hedgehog, rabbit, squirrel), spore reproduction.
+ * v16: mushroom kinds to choose (death cap, decoy, glowing) and mutations picked after each level.
  * v15: autosave inside a level (every 20 s, on pause, menu and leaving the app) and Continue.
  * v14: pause; the campaign forest carries on from level to level and survives a reload.
  * v13: the view fills any screen shape (no black bars).
@@ -301,7 +302,7 @@
       clock: 5, dark: 0, phase: 'day', shadeTimer: 3,
       trees: [], ringT: 5, kidShown: {}, ringShown: false, nets: [],
       grewOnce: false, fedOnce: false, hitRock: false,
-      base: null, paused: false, sproutKind: 'normal', gut: [],
+      base: null, paused: false, sproutKind: 'normal', gut: [], muts: [], mutChoices: null, mutPick: null,
     };
     if (blank) return;
     makeDecor();
@@ -621,7 +622,7 @@
       tip.maxTravel = tip.travelled + dist(state.nodes[i].x, state.nodes[i].y, x, y) * 2.2 + 80;
     } else {
       const n = state.nodes[i];
-      tip = addTip(i, Math.atan2(y - n.y, x - n.x), { x, y }, 0, PLAYER_SPEED, true);
+      tip = addTip(i, Math.atan2(y - n.y, x - n.x), { x, y }, 0, PLAYER_SPEED * (hasMut('fast') ? 1.4 : 1), true);
     }
     state.grewOnce = true;
     const players = state.tips.filter((t) => t.player);
@@ -680,7 +681,7 @@
     if (state.sporeFrom === m) state.sporeFrom = null;
   }
 
-  const roomForMore = () => state.mushrooms.length < state.L.maxMushrooms + (state.base ? state.base.total : 0);
+  const roomForMore = () => state.mushrooms.length < state.L.maxMushrooms + (state.base ? state.base.total : 0) + (hasMut('room') ? 3 : 0);
 
   function sproutProblem(x, rootIdx) {
     if (!roomForMore()) return 'В этом уровне больше грибов не вырастить';
@@ -859,7 +860,7 @@
 
   function releaseSpores(m, x) {
     m.prevStage = m.stage;
-    m.stage = SPORE_DROP_TO;
+    m.stage = hasMut('spores') ? SPORE_DROP_TO + 1 : SPORE_DROP_TO;
     m.anim = 0.4;
     const d = Math.abs(x - m.x);
     const cloud = { x0: m.x, y0: GROUND_Y - 150, x1: x, t: 0, dur: 1.2 + d / 1400, dots: [] };
@@ -1016,7 +1017,7 @@
       else updateBird(h, dt);
     }
     if (!state.L.attackEvery) return;
-    state.attackTimer -= dt * (0.7 + 1.3 * state.dark); // hungrier at night
+    state.attackTimer -= dt * (0.7 + 1.3 * state.dark) * (hasMut('scent') ? 0.65 : 1); // hungrier at night
     if (state.attackTimer > 0) return;
     const free = state.hunters.filter((h) => h.threat && ['idle', 'away', 'return'].includes(h.state));
     const options = [];
@@ -1327,7 +1328,7 @@
       const n = state.nodes[p.target];
       const d = dist(n.x, n.y, p.x, p.y);
       if (p.state === 'seek') {
-        if (d < 8) { p.state = 'chew'; p.chew = p.info.chew; continue; }
+        if (d < 8) { p.state = 'chew'; p.chew = p.info.chew * (hasMut('thick') ? 2 : 1); continue; }
         const sp = p.info.speed * dt;
         p.dir = n.x >= p.x ? 1 : -1;
         p.x += (n.x - p.x) / d * sp;
@@ -1479,6 +1480,8 @@
     let stars = state.time <= par ? 3 : state.time <= par * 1.6 ? 2 : 1;
     if (state.lost >= 4) stars = Math.max(1, stars - 1);
     state.result = { stars, time: state.time };
+    state.mutChoices = rollMutations();
+    state.mutPick = null;
     if (levelIndex < LEVELS.length - 1) saveCampaign(levelIndex + 1); // the grown forest waits for the next level
     clearMid();
     progress.stars[levelIndex] = Math.max(progress.stars[levelIndex] || 0, stars);
@@ -2540,23 +2543,68 @@
     const pw = 520, ph = 300, px = (W - pw) / 2, py = (H - ph) / 2;
     panel(px, py, pw, ph, 22);
     text(TXT.pause.title, W / 2, py + 62, 44, '#ffd27a', 'center');
-    text(TXT.pause.hint, W / 2, py + 112, 17, 'rgba(247,232,198,0.8)', 'center', 600);
+    text(state.muts && state.muts.length ? TXT.mutsUi.have + mutList() : TXT.pause.hint, W / 2, py + 112, 15, 'rgba(247,232,198,0.8)', 'center', 600);
     button(px + 40, py + 170, 200, 56, TXT.pause.menu, () => openMenu(), { size: 20 });
     button(px + 280, py + 170, 200, 56, TXT.pause.resume, togglePause, { primary: true, size: 22 });
   }
 
+
+  // ---------------------------------------------------------------- mutations
+  // After a won level the player picks one of three mutations; they stay with the forest.
+  const MUTATIONS = ['fast', 'thick', 'clouds', 'sugar', 'spores', 'scent', 'room'];
+  const hasMut = (id) => !!(state && state.muts && state.muts.includes(id));
+  const cloudsMax = () => (hasMut('clouds') ? 18 : 12);
+
+  function rollMutations() {
+    const free = MUTATIONS.filter((id) => !state.muts.includes(id));
+    const out = [];
+    while (out.length < 3 && free.length) out.push(free.splice(Math.floor(rand() * free.length), 1)[0]);
+    return out;
+  }
+
+  function mutCard(x, y, w, h, id, on) {
+    ctx.save();
+    roundRect(x, y, w, h, 14);
+    ctx.fillStyle = on ? 'rgba(120,80,20,0.92)' : 'rgba(40,26,16,0.9)';
+    ctx.fill();
+    ctx.lineWidth = on ? 4 : 2;
+    ctx.strokeStyle = on ? '#ffd27a' : 'rgba(214,163,82,0.7)';
+    ctx.stroke();
+    ctx.restore();
+    text(TXT.muts[id].name, x + w / 2, y + 30, 19, on ? '#fff1cf' : '#ffd27a', 'center');
+    wrap(TXT.muts[id].desc, x + w / 2, y + 62, w - 28, 14, 19, 'rgba(247,232,198,0.9)', 'center');
+    buttons.push({ x, y, w, h, label: 'mut-' + id, onClick: () => { state.mutPick = id; } });
+  }
+
+  function mutList() {
+    return (state.muts || []).map((id) => TXT.muts[id].name).join(', ');
+  }
   function drawWon() {
     dim(0.45);
-    const pw = 640, ph = 360, px = (W - pw) / 2, py = 230;
-    panel(px, py, pw, ph, 22);
-    text('Уровень пройден!', W / 2, py + 56, 40, '#ffd27a', 'center');
-    stars(W / 2, py + 120, state.result.stars, 54);
-    text('Время: ' + fmtTime(state.result.time) + '   ·   потеряно грибов: ' + state.lost, W / 2, py + 180, 18, '#f7e8c6', 'center', 600);
-    text('3 звезды — быстрее ' + fmtTime(state.L.par), W / 2, py + 208, 15, 'rgba(247,232,198,0.7)', 'center', 600);
     const last = levelIndex >= LEVELS.length - 1;
-    button(px + 30, py + 260, 180, 52, 'Уровни', () => openMenu(), { size: 20 });
-    button(px + 230, py + 260, 180, 52, 'Заново', () => enterLevel(levelIndex, true), { size: 20 });
-    button(px + 430, py + 260, 180, 52, last ? 'Финал!' : 'Дальше', () => (last ? openMenu() : continueLevel(levelIndex + 1)), { primary: true, size: 20 });
+    const cards = !last && state.mutChoices && state.mutChoices.length ? state.mutChoices : null;
+    const pw = cards ? 900 : 640, ph = cards ? 560 : 360, px = (W - pw) / 2, py = Math.max(20, (H - ph) / 2);
+    panel(px, py, pw, ph, 22);
+    text('Уровень пройден!', W / 2, py + 50, 38, '#ffd27a', 'center');
+    stars(W / 2, py + 106, state.result.stars, 48);
+    text('Время: ' + fmtTime(state.result.time) + '   ·   потеряно грибов: ' + state.lost, W / 2, py + 158, 17, '#f7e8c6', 'center', 600);
+    text('3 звезды — быстрее ' + fmtTime(state.L.par), W / 2, py + 184, 14, 'rgba(247,232,198,0.7)', 'center', 600);
+    let by = py + 260;
+    if (cards) {
+      text(state.mutPick ? TXT.mutsUi.picked : TXT.mutsUi.pick, W / 2, py + 222, 19, state.mutPick ? '#bfffaa' : '#fff1cf', 'center');
+      const cw = 264, gap = 22, x0 = W / 2 - (cards.length * cw + (cards.length - 1) * gap) / 2;
+      cards.forEach((id, i) => mutCard(x0 + i * (cw + gap), py + 244, cw, 150, id, state.mutPick === id));
+      if (state.muts.length) text(TXT.mutsUi.have + mutList(), W / 2, py + 418, 13, 'rgba(247,232,198,0.7)', 'center', 600);
+      by = py + 450;
+    }
+    const bx = W / 2 - 310;
+    button(bx, by, 180, 52, 'Уровни', () => openMenu(), { size: 20 });
+    button(bx + 200, by, 180, 52, 'Заново', () => enterLevel(levelIndex, true), { size: 20 });
+    button(bx + 400, by, 220, 52, last ? 'Финал!' : 'Дальше', () => {
+      if (last) { openMenu(); return; }
+      if (state.mutPick && !state.muts.includes(state.mutPick)) state.muts.push(state.mutPick); // the forest keeps it
+      continueLevel(levelIndex + 1);
+    }, { primary: true, size: 20 });
   }
 
   // ---------------------------------------------------------------- intro story & first-play tips
@@ -2837,7 +2885,7 @@
 
   function addClouds(n) {
     const before = state.clouds;
-    state.clouds = Math.min(CLOUDS_MAX, state.clouds + n);
+    state.clouds = Math.min(cloudsMax(), state.clouds + n);
     if (before < RAINS.good.cost && state.clouds >= RAINS.good.cost && !state.cloudsShown) {
       state.cloudsShown = true;
       msg(TXT.rain.ready, 4);
@@ -2981,9 +3029,9 @@
   function drawRainPanel() {
     const x = 14, y = 66, w = 236;
     panel(x, y, w, 132, 14);
-    const k = state.clouds / CLOUDS_MAX;
+    const k = state.clouds / cloudsMax();
     text(TXT.rain.meter, x + 14, y + 20, 15, '#cfe4ff');
-    text(Math.floor(state.clouds) + '/' + CLOUDS_MAX, x + w - 14, y + 20, 14, 'rgba(247,232,198,0.8)', 'right', 600);
+    text(Math.floor(state.clouds) + '/' + cloudsMax(), x + w - 14, y + 20, 14, 'rgba(247,232,198,0.8)', 'right', 600);
     roundRect(x + 14, y + 34, w - 28, 8, 4);
     ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fill();
     if (k > 0) {
@@ -2992,7 +3040,7 @@
     }
     // cost marks on the bar
     for (const R of [RAINS.good, RAINS.storm]) {
-      const mx = x + 14 + (w - 28) * R.cost / CLOUDS_MAX;
+      const mx = x + 14 + (w - 28) * R.cost / cloudsMax();
       ctx.fillStyle = 'rgba(255,240,210,0.8)';
       ctx.fillRect(mx - 1, y + 31, 2, 14);
     }
@@ -3246,7 +3294,7 @@
         const want = t.info.wants;
         if (Object.keys(want).every((k) => state.counts[k] >= want[k])) {
           for (const k in want) state.counts[k] -= want[k];
-          t.sugarQ += t.info.gives;
+          t.sugarQ += t.info.gives + (hasMut('sugar') ? 1 : 0);
           t.trust = Math.min(1, t.trust + 0.34);
           if (!t.paidOnce) { t.paidOnce = true; msg(TXT.forest.paid.replace('{tree}', TXT.forest.trees[t.kind]).replace('{n}', t.info.gives), 3); }
         } else {
