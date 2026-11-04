@@ -5,6 +5,7 @@
  * stock grows mushrooms on the surface through 6 stages.
  *
  * v2: levels, dangers (grubs, hedgehog, rabbit, squirrel), spore reproduction.
+ * v14: pause; the campaign forest carries on from level to level and survives a reload.
  * v13: the view fills any screen shape (no black bars).
  * v12: worlds 10x larger (up to 16000 x 4500) with zoom 25-200% (wheel, +/-, pinch).
  * v11: animals move with code-driven squash & stretch, waddles, hops, wing beats and body waves.
@@ -268,7 +269,7 @@
   const grid = new Map();
   const cellKey = (x, y) => (Math.floor(x / 40) << 16) ^ Math.floor(y / 40);
 
-  function newWorld(li) {
+  function newWorld(li, blank = false) {
     levelIndex = li;
     const L = LEVELS[li];
     seed = L.seed;
@@ -299,7 +300,9 @@
       clock: 5, dark: 0, phase: 'day', shadeTimer: 3,
       trees: [], ringT: 5, kidShown: {}, ringShown: false, nets: [],
       grewOnce: false, fedOnce: false, hitRock: false,
+      base: null, paused: false,
     };
+    if (blank) return;
     makeDecor();
     makeTrees();
     makeRocks(L.rocks);
@@ -313,10 +316,15 @@
   }
 
   // ---- surface decor (trees, bushes, flowers) and the roots under trees
+  // when a campaign forest grows, new things go only into the added strip / depth
+  let REGION = null;
+  const inNew = (x, y) => !REGION || x > REGION.x0 || y > REGION.y0;
+
   function makeDecor() {
     const d = state.decor;
     const sx = state.startX;
-    let x = rr(60, 200);
+    const x0 = REGION ? REGION.x0 : 0;
+    let x = x0 + rr(60, 200);
     while (x < WW - 60) {
       if (Math.abs(x - sx) > 190) {
         const kind = pick(['oak', 'birch', 'spruce', 'oak', 'spruce']);
@@ -326,17 +334,17 @@
       }
       x += rr(330, 620);
     }
-    for (let i = 0; i < WW / 170; i++) {
-      const bx = rr(30, WW - 30);
+    for (let i = 0; i < (WW - x0) / 170; i++) {
+      const bx = rr(x0 + 30, WW - 30);
       if (Math.abs(bx - sx) < 120) continue;
       d.push({ s: pick(['bush_berries', 'bush_flowers', 'fern_1', 'fern_2', 'log', 'leaf_pile']), x: bx, scale: rr(0.28, 0.36), flip: rand() < 0.5, layer: 1 });
     }
-    for (let i = 0; i < WW / 90; i++) {
-      const fx = rr(20, WW - 20);
+    for (let i = 0; i < (WW - x0) / 90; i++) {
+      const fx = rr(x0 + 20, WW - 20);
       if (Math.abs(fx - sx) < 90) continue;
       d.push({ s: pick(['daisies', 'bluebells', 'buttercups', 'grass_1', 'grass_2', 'grass_3']), x: fx, scale: rr(0.22, 0.3), flip: rand() < 0.5, layer: 2 });
     }
-    d.push({ s: 'robin', x: sx + rr(260, 380), scale: 0.22, flip: true, layer: 1, robin: true, peck: 0, wait: 2 });
+    if (!REGION) d.push({ s: 'robin', x: sx + rr(260, 380), scale: 0.22, flip: true, layer: 1, robin: true, peck: 0, wait: 2 });
   }
 
   // ---- obstacles
@@ -363,12 +371,15 @@
       { s: 'rock_4', w: [80, 120] },
     ];
     let tries = 0;
-    while (state.rocks.length < count && tries++ < count * 120) {
+    const goal = state.rocks.length + count;
+    while (state.rocks.length < goal && tries++ < count * 120) {
       const k = pick(kinds);
       const im = img[k.s];
       const w = rr(k.w[0], k.w[1]);
       const x = rr(70, WW - 70);
       const y = rr(SOIL_TOP + 70, WH - 50);
+      if (!inNew(x, y)) continue;
+      if (REGION && nearestNode(x, y).d < 120) continue; // never drop a rock onto the network
       const ww = w * (y > GROUND_Y + 600 ? 1.2 : 1); // deeper rocks are bigger
       const scale = ww / im.width;
       const h = im.height * scale;
@@ -426,6 +437,7 @@
       } else {
         x = rr(60, WW - 60);
         y = rr(SOIL_TOP + 40, WH - 40);
+        if (opts.fresh && !inNew(x, y)) continue;
       }
       if (!freeSpot(x, y, def.size * 0.6)) continue;
       if (opts.awayFromNetwork && nearestNode(x, y).d < 110) continue;
@@ -667,7 +679,7 @@
     if (state.sporeFrom === m) state.sporeFrom = null;
   }
 
-  const roomForMore = () => state.mushrooms.length < state.L.maxMushrooms;
+  const roomForMore = () => state.mushrooms.length < state.L.maxMushrooms + (state.base ? state.base.total : 0);
 
   function sproutProblem(x, rootIdx) {
     if (!roomForMore()) return 'В этом уровне больше грибов не вырастить';
@@ -1367,10 +1379,13 @@
     const g = state.L.goal;
     const ms = state.mushrooms;
     const lines = [];
-    if (g.roots) lines.push({ text: 'Колонии со своими корнями', have: ms.filter((m) => !m.mother).length, need: g.roots });
-    if (g.children) lines.push({ text: 'Подросшие дети (стадия ' + CHILD_GOAL_STAGE + '+)', have: ms.filter((m) => m.mother && m.stage >= CHILD_GOAL_STAGE).length, need: g.children });
-    if (g.mushrooms) lines.push({ text: 'Всего грибов', have: ms.length, need: g.mushrooms });
-    if (g.ripeNow) lines.push({ text: g.ripeNow > 1 ? 'Зрелых грибов сразу' : 'Зрелый гриб', have: ms.filter((m) => m.stage >= RIPE).length, need: g.ripeNow });
+    const b = state.base || { roots: 0, kids: 0, total: 0, ripe: 0 };
+    const more = state.base && state.base.total > 0; // a continued forest: count what is new this level
+    const has = (n, base) => Math.max(0, n - base);
+    if (g.roots) lines.push({ text: more ? 'Новые колонии' : 'Колонии со своими корнями', have: has(ms.filter((m) => !m.mother).length, more ? b.roots : 0), need: more ? g.roots - 1 || 1 : g.roots });
+    if (g.children) lines.push({ text: more ? 'Новые дети (стадия ' + CHILD_GOAL_STAGE + '+)' : 'Подросшие дети (стадия ' + CHILD_GOAL_STAGE + '+)', have: has(ms.filter((m) => m.mother && m.stage >= CHILD_GOAL_STAGE).length, b.kids), need: g.children });
+    if (g.mushrooms) lines.push({ text: more ? 'Новых грибов' : 'Всего грибов', have: has(ms.length, b.total), need: more ? g.mushrooms - 1 : g.mushrooms });
+    if (g.ripeNow) lines.push({ text: (more ? 'Ещё зрелых' : 'Зрелых') + (g.ripeNow > 1 ? ' грибов сразу' : ' гриб'), have: has(ms.filter((m) => m.stage >= RIPE).length, b.ripe), need: g.ripeNow });
     return lines;
   }
 
@@ -1380,6 +1395,7 @@
     let stars = state.time <= par ? 3 : state.time <= par * 1.6 ? 2 : 1;
     if (state.lost >= 4) stars = Math.max(1, stars - 1);
     state.result = { stars, time: state.time };
+    if (levelIndex < LEVELS.length - 1) saveCampaign(levelIndex + 1); // the grown forest waits for the next level
     progress.stars[levelIndex] = Math.max(progress.stars[levelIndex] || 0, stars);
     progress.unlocked = Math.max(progress.unlocked, Math.min(LEVELS.length, levelIndex + 2));
     saveProgress();
@@ -2233,6 +2249,7 @@
 
   function drawHud() {
     button(14, 14, 120, 44, '☰ Уровни', () => openMenu(), { size: 18 });
+    button(142, 14, 52, 44, mode === 'paused' ? '▶' : '❚❚', togglePause, { size: 18 });
 
     panel(HUD.x - HUD.w / 2, HUD.y, HUD.w, HUD.h, 28);
     for (const t of RES_ORDER) {
@@ -2366,7 +2383,7 @@
         const im = img['mushroom_' + Math.min(6, i + 1)];
         drawSprite(ctx, im, x, y + 30, 60 / im.height);
         text(String(i + 1), x + 33, y - 33, 24, '#fff3da', 'center');
-        buttons.push({ x: x - r, y: y - r, w: r * 2, h: r * 2, label: 'lvl' + i, onClick: () => startLevel(i) });
+        buttons.push({ x: x - r, y: y - r, w: r * 2, h: r * 2, label: 'lvl' + i, onClick: () => enterLevel(i) });
       } else drawLock(x, y);
       text(L.name, x, y + r + 26, 17, open ? '#f7e8c6' : 'rgba(247,232,198,0.45)', 'center');
       if (open) stars(x, y + r + 52, progress.stars[i] || 0, 20);
@@ -2401,6 +2418,26 @@
     button(W / 2 - 110, py + 420, 220, 54, 'Играть', () => { mode = 'play'; if (!state.tutorial) msg('Кликните по почве — грибница прорастёт в ту сторону', 4); }, { primary: true, size: 24 });
   }
 
+  function togglePause() {
+    if (mode === 'play') {
+      mode = 'paused';
+      state.keys.clear();
+      if (state.activeTip) state.activeTip = null;
+      state.drag = null;
+    } else if (mode === 'paused') mode = 'play';
+  }
+
+  function drawPaused() {
+    buttons = []; // only the pause screen can be pressed
+    dim(0.45);
+    const pw = 520, ph = 300, px = (W - pw) / 2, py = (H - ph) / 2;
+    panel(px, py, pw, ph, 22);
+    text(TXT.pause.title, W / 2, py + 62, 44, '#ffd27a', 'center');
+    text(TXT.pause.hint, W / 2, py + 112, 17, 'rgba(247,232,198,0.8)', 'center', 600);
+    button(px + 40, py + 170, 200, 56, TXT.pause.menu, () => openMenu(), { size: 20 });
+    button(px + 280, py + 170, 200, 56, TXT.pause.resume, togglePause, { primary: true, size: 22 });
+  }
+
   function drawWon() {
     dim(0.45);
     const pw = 640, ph = 360, px = (W - pw) / 2, py = 230;
@@ -2411,8 +2448,8 @@
     text('3 звезды — быстрее ' + fmtTime(state.L.par), W / 2, py + 208, 15, 'rgba(247,232,198,0.7)', 'center', 600);
     const last = levelIndex >= LEVELS.length - 1;
     button(px + 30, py + 260, 180, 52, 'Уровни', () => openMenu(), { size: 20 });
-    button(px + 230, py + 260, 180, 52, 'Заново', () => startLevel(levelIndex), { size: 20 });
-    button(px + 430, py + 260, 180, 52, last ? 'Финал!' : 'Дальше', () => (last ? openMenu() : startLevel(levelIndex + 1)), { primary: true, size: 20 });
+    button(px + 230, py + 260, 180, 52, 'Заново', () => enterLevel(levelIndex), { size: 20 });
+    button(px + 430, py + 260, 180, 52, last ? 'Финал!' : 'Дальше', () => (last ? openMenu() : continueLevel(levelIndex + 1)), { primary: true, size: 20 });
   }
 
   // ---------------------------------------------------------------- intro story & first-play tips
@@ -3237,7 +3274,6 @@
   }
 
   function makeNets(L) {
-    state.nets = [];
     for (const kind of L.neighbors || []) {
       let x = null, target = null;
       if (kind === 'parasite') { // honey fungus starts near a tree and goes for it
@@ -3248,6 +3284,7 @@
           for (let k = 0; k < 12 && x == null; k++) {
             const cx = clamp(t.x + (rand() < 0.5 ? -1 : 1) * rr(380, 520), 200, WW - 200);
             if (rockHit(cx, GROUND_Y + ROOT_DY, 30) || Math.abs(cx - state.startX) < 250) continue;
+            if (REGION && nearestNode(cx, GROUND_Y + 200).d < 500) continue;
             if (state.nets.some((o) => Math.abs(o.x - cx) < 400)) continue; // keep clear of other neighbours
             x = cx;
             target = t;
@@ -3259,6 +3296,7 @@
       for (let k = 0; k < 60 && x == null && kind !== 'parasite'; k++) {
         const cx = rr(200, WW - 200);
         if (Math.abs(cx - state.startX) < minD) continue;
+        if (REGION && nearestNode(cx, GROUND_Y + 200).d < 900) continue; // keep clear of the grown network
         if (state.nets.some((o) => Math.abs(o.x - cx) < 700)) continue;
         if (rockHit(cx, GROUND_Y + ROOT_DY, 30)) continue;
         x = cx;
@@ -3606,7 +3644,8 @@
     ctx.setTransform(RS, 0, 0, RS, 0, 0); // screen space
     drawFlyers();
     drawRainOverlay();
-    if (mode === 'play') { drawHud(); drawRainPanel(); drawDayClock(); drawTutorial(); }
+    if (mode === 'play' || mode === 'paused') { drawHud(); drawRainPanel(); drawDayClock(); drawTutorial(); }
+    if (mode === 'paused') drawPaused();
     if (mode === 'menu') drawMenu();
     if (mode === 'intro') drawIntro();
     if (mode === 'won') drawWon();
@@ -3624,6 +3663,7 @@
   }
 
   function update(dt) {
+    if (mode === 'paused') return; // the whole forest stands still
     state.t += dt;
     updateAmbient(dt);
     updateCritters(dt);
@@ -3810,15 +3850,160 @@
       else if ([' ', 'Enter', 'ArrowRight'].includes(e.key)) storyNext();
       return;
     }
+    if (['p', 'P', 'з', 'З', ' '].includes(e.key) && (mode === 'play' || mode === 'paused')) { e.preventDefault(); togglePause(); return; }
+    if (e.key === 'Escape' && mode === 'paused') { togglePause(); return; }
     if (e.key === 'Escape') { if (state.sporeFrom) state.sporeFrom = null; else if (mode === 'play') openMenu(); }
-    if (['r', 'R', 'к', 'К'].includes(e.key) && mode === 'play') startLevel(levelIndex);
+    if (['r', 'R', 'к', 'К'].includes(e.key) && mode === 'play') enterLevel(levelIndex);
     if (mode === 'play' && e.key === RAINS.good.key) callRain('good');
     if (mode === 'play' && e.key === RAINS.storm.key) callRain('storm');
   });
   window.addEventListener('keyup', (e) => { if (state) state.keys.delete(KEYMAP[e.key] || e.key); });
   window.addEventListener('blur', () => { if (state) state.keys.clear(); });
   window.addEventListener('resize', resize);
+  document.addEventListener('visibilitychange', () => { if (document.hidden && state && mode === 'play') togglePause(); });
 
+
+  // ---------------------------------------------------------------- campaign: the forest carries on
+  // "Next" does not start a new world: the same network, mushrooms, stock and unions go on, and
+  // the forest grows to the next level's size with new ground, rocks, food, neighbours and dangers.
+  // The start of each level is kept in the browser, so a reload continues the same forest.
+  const CAMP_KEY = 'mycelium-forest-campaign-v1';
+  const r1 = (v) => Math.round(v * 10) / 10;
+
+  function baseCounts() {
+    const ms = state.mushrooms;
+    return { roots: ms.filter((m) => !m.mother).length, kids: ms.filter((m) => m.mother && m.stage >= CHILD_GOAL_STAGE).length,
+      total: ms.length, ripe: ms.filter((m) => m.stage >= RIPE).length };
+  }
+
+  function snapshot() {
+    const S = state;
+    const ti = (t) => (t ? S.trees.indexOf(t) : -1);
+    return {
+      v: 1, WW, WH, startX: S.startX, counts: { ...S.counts }, clouds: S.clouds, clock: S.clock,
+      seen: { kid: S.kidShown, ring: S.ringShown, mother: S.motherReadyShown, warned: S.pestWarned, grub: S.grubWarned, ant: S.antWarned, clouds: S.cloudsShown },
+      nodes: S.nodes.map((n) => [r1(n.x), r1(n.y), n.parent, r1(n.w), n.dead ? 1 : 0]),
+      rocks: S.rocks.map((r) => [r.s, r1(r.x), r1(r.bottom), +r.scale.toFixed(4), r.flip ? 1 : 0, r1(r.cx), r1(r.cy), r1(r.rx), r1(r.ry)]),
+      res: S.resources.filter((r) => !r.dead).map((r) => [r.type, r1(r.x), r1(r.y), r.s === 'water_pool' ? 1 : 0, r.amount, r.connected ? r.node : -1]),
+      decor: S.decor.filter((d) => !d.robin).map((d) => [d.s, r1(d.x), +d.scale.toFixed(3), d.flip ? 1 : 0, d.layer]),
+      trees: S.trees.map((t) => [S.decor.indexOf(t.d), t.allied ? 1 : 0, t.node, t.root, +t.trust.toFixed(2), r1(t.payT), +t.health.toFixed(3), t.dead ? 1 : 0, t.paidOnce ? 1 : 0]),
+      mush: S.mushrooms.map((m) => [r1(m.x), m.node, m.root, m.mother ? S.mushrooms.indexOf(m.mother) : -1, m.stage, m.species || '', ti(m.tree), m.ring ? 1 : 0, m.spore ? 1 : 0]),
+      nets: S.nets.filter((n) => !n.dead).map((n) => ({ kind: n.kind, x: r1(n.x), strength: n.strength, mushStage: n.mushStage,
+        nodes: n.nodes.map((q) => [r1(q.x), r1(q.y), q.parent, q.dead ? 1 : 0]), tips: n.tips, contact: n.contact,
+        target: ti(n.target), biteNode: n.biteNode, seen: n.seen, tradedOnce: n.tradedOnce })),
+    };
+  }
+
+  // A world built from a snapshot, then grown to level li.
+  function restoreWorld(snap, li) {
+    const L = LEVELS[li];
+    newWorld(li, true); // a blank state for this level, nothing generated
+    WW = snap.WW; WH = snap.WH;
+    const S = state;
+    S.startX = snap.startX;
+    S.counts = { ...snap.counts };
+    S.clouds = snap.clouds || 0;
+    S.clock = snap.clock || 5;
+    const seen = snap.seen || {};
+    S.kidShown = seen.kid || {}; S.ringShown = !!seen.ring; S.motherReadyShown = !!seen.mother;
+    S.pestWarned = seen.warned || {}; S.grubWarned = !!seen.grub; S.antWarned = !!seen.ant; S.cloudsShown = !!seen.clouds;
+    for (const [x, y, parent, w, dead] of snap.nodes) { // rebuild the network and its spatial index
+      const idx = S.nodes.length;
+      const p = parent >= 0 ? S.nodes[parent] : null;
+      S.nodes.push({ x, y, parent, w, depth: p ? p.depth + 1 : 0, children: [], dead: !!dead, root: p ? p.root : idx });
+      if (p && !dead) p.children.push(idx);
+      const k = cellKey(x, y);
+      if (!grid.has(k)) grid.set(k, []);
+      grid.get(k).push(idx);
+    }
+    S.rocks = snap.rocks.map(([s, x, bottom, scale, flip, cx, cy, rx, ry]) => ({ s, x, bottom, scale, flip: !!flip, cx, cy, rx, ry }));
+    S.decor = snap.decor.map(([s, x, scale, flip, layer]) => ({ s, x, scale, flip: !!flip, layer }));
+    S.decor.push({ s: 'robin', x: S.startX + 320, scale: 0.22, flip: true, layer: 1, robin: true, peck: 0, wait: 2 });
+    S.trees = snap.trees.map(([di, allied, node, root, trust, payT, health, dead, paid]) => {
+      const d = S.decor[di];
+      return { d, kind: d.s, info: TREE_KINDS[d.s], x: d.x, allied: !!allied, node, root, trust, payT, kidT: 4, side: 1, kids: [],
+        health, infest: null, dead: !!dead, sugarQ: 0, qT: 0, paidOnce: !!paid };
+    });
+    for (const [type, x, y, big, amount, node] of snap.res) {
+      const r = makeResource(type, x, y, !!big, amount);
+      if (node >= 0 && S.nodes[node] && !S.nodes[node].dead) { r.connected = true; r.node = node; r.path = pathToRoot(node); }
+    }
+    S.mushrooms = snap.mush.map(([x, node, root, mi, stage, species, tri, ring, spore]) => ({ x, node, root, mother: mi, stage, prevStage: 0, anim: 1, born: 0,
+      species: species || undefined, tree: tri >= 0 ? S.trees[tri] : undefined, ring: !!ring, spore: !!spore }));
+    for (const m of S.mushrooms) m.mother = m.mother >= 0 ? S.mushrooms[m.mother] : null;
+    for (const m of S.mushrooms) if (m.tree) m.tree.kids.push(m);
+    S.nets = snap.nets.map((n) => {
+      const net = { kind: n.kind, info: NET_KINDS[n.kind], x: n.x, nodes: [], tips: n.tips || [], strength: n.strength, growT: 1, frontT: 0,
+        contact: n.contact, dead: false, seen: !!n.seen, front: null, frontAt: -9, mushStage: n.mushStage, trees: [],
+        target: n.target >= 0 ? S.trees[n.target] : null, biteNode: n.biteNode, gainT: 10, tradeT: 8, tradedOnce: !!n.tradedOnce };
+      for (const [x, y, parent, dead] of n.nodes) { const i = net.nodes.length; net.nodes.push({ x, y, parent, children: [], dead: !!dead }); if (parent >= 0 && !dead) net.nodes[parent].children.push(i); }
+      if (net.target && net.biteNode != null) net.target.infest = net;
+      return net;
+    });
+    growWorld(L);
+    S.base = baseCounts();
+    makeHunters(L);
+    centerOn(S.startX, GROUND_Y + 120);
+    cam.y = 0;
+  }
+
+  // the forest gets bigger: new ground to the right and below, filled with this level's things
+  function growWorld(L) {
+    const oldW = WW, oldH = WH;
+    WW = Math.max(WW, L.ww); WH = Math.max(WH, L.wh);
+    const added = 1 - (oldW * oldH) / (WW * WH);
+    seed = L.seed * 7919 + 13;
+    REGION = { x0: oldW, y0: oldH };
+    if (WW > oldW) {
+      const before = state.decor.length;
+      makeDecor();
+      for (const d of state.decor.slice(before)) if (d.layer === 0) state.trees.push({ d, kind: d.s, info: TREE_KINDS[d.s], x: d.x,
+        allied: false, node: -1, root: -1, trust: 1, payT: 0, kidT: 0, side: 1, kids: [], health: 1, infest: null, dead: false, sugarQ: 0, qT: 0, paidOnce: false });
+    }
+    if (added > 0) makeRocks(Math.round(L.rocks * added));
+    // food: fresh deposits in the new ground, and the old soil topped up
+    const alive = state.resources.filter((r) => !r.dead).length;
+    for (const t of RES_ORDER) for (let i = 0; i < Math.round(L.plan[t] * Math.max(added, 0.25)); i++) placeResource(t, { fresh: added > 0, awayFromNetwork: true });
+    for (let i = 0; i < Math.round(L.pools * Math.max(added, 0.4)); i++) placeResource('water', { big: true, awayFromNetwork: true });
+    REGION = null;
+    for (let k = 0; k < 30 && state.resources.filter((r) => !r.dead).length < Math.max(alive, L.cap * 0.6); k++) placeResource(pick(RES_ORDER), { awayFromNetwork: true });
+    REGION = { x0: 0, y0: 0 }; // new neighbours: anywhere clear of the network
+    const kinds = state.nets.filter((n) => !n.dead).map((n) => n.kind);
+    makeNets({ neighbors: (L.neighbors || []).filter((k) => { const i = kinds.indexOf(k); if (i >= 0) { kinds.splice(i, 1); return false; } return true; }) });
+    REGION = null;
+    makeCritters();
+  }
+
+  function saveCampaign(li) {
+    try { localStorage.setItem(CAMP_KEY, JSON.stringify({ level: li, snap: snapshot() })); } catch (e) { /* storage full or blocked */ }
+  }
+  function loadCampaign() {
+    try { const c = JSON.parse(localStorage.getItem(CAMP_KEY) || 'null'); return c && c.snap && c.snap.v === 1 ? c : null; } catch (e) { return null; }
+  }
+
+  // "Next": the same forest goes on growing
+  function continueLevel(li) {
+    const snap = snapshot();
+    restoreWorld(snap, li);
+    buildSoil();
+    rebuildMycelium();
+    saveCampaign(li); // the start of this level, for "again" and for a reload
+    mode = 'intro';
+  }
+
+  // a level from the menu or "again": the saved forest when it is at this level, otherwise a fresh one
+  function enterLevel(i) {
+    const c = loadCampaign();
+    if (c && c.level === i && i > 0) {
+      restoreWorld(c.snap, i);
+      buildSoil();
+      rebuildMycelium();
+      mode = 'intro';
+      return;
+    }
+    startLevel(i);
+    if (i === 0) saveCampaign(0);
+  }
   function startLevel(i) {
     newWorld(i);
     buildSoil();
@@ -3854,6 +4039,6 @@
     get timeScale() { return timeScale; }, set timeScale(v) { timeScale = Math.max(1, Math.min(16, v | 0)); },
     scareHunter, hitPest, scareAnt, releaseSpores, sporeSpotProblem, mergeKin, callRain,
     growthTarget, canSpore, goalLines, nearestNode, openMenu,
-    get buttons() { return buttons; }, zoomAt,
+    get buttons() { return buttons; }, zoomAt, togglePause, continueLevel, enterLevel, snapshot,
   };
 })();
