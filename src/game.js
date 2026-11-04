@@ -3867,7 +3867,7 @@
   // "Next" does not start a new world: the same network, mushrooms, stock and unions go on, and
   // the forest grows to the next level's size with new ground, rocks, food, neighbours and dangers.
   // The start of each level is kept in the browser, so a reload continues the same forest.
-  const CAMP_KEY = 'mycelium-forest-campaign-v1';
+  const CAMP_KEY = 'mycelium-forest-campaign-v2'; // v1 saves had shifted tree links
   const r1 = (v) => Math.round(v * 10) / 10;
 
   function baseCounts() {
@@ -3885,7 +3885,7 @@
       nodes: S.nodes.map((n) => [r1(n.x), r1(n.y), n.parent, r1(n.w), n.dead ? 1 : 0]),
       rocks: S.rocks.map((r) => [r.s, r1(r.x), r1(r.bottom), +r.scale.toFixed(4), r.flip ? 1 : 0, r1(r.cx), r1(r.cy), r1(r.rx), r1(r.ry)]),
       res: S.resources.filter((r) => !r.dead).map((r) => [r.type, r1(r.x), r1(r.y), r.s === 'water_pool' ? 1 : 0, r.amount, r.connected ? r.node : -1]),
-      decor: S.decor.filter((d) => !d.robin).map((d) => [d.s, r1(d.x), +d.scale.toFixed(3), d.flip ? 1 : 0, d.layer]),
+      decor: S.decor.map((d) => [d.s, r1(d.x), +d.scale.toFixed(3), d.flip ? 1 : 0, d.layer, d.robin ? 1 : 0]), // keep order: trees point into it
       trees: S.trees.map((t) => [S.decor.indexOf(t.d), t.allied ? 1 : 0, t.node, t.root, +t.trust.toFixed(2), r1(t.payT), +t.health.toFixed(3), t.dead ? 1 : 0, t.paidOnce ? 1 : 0]),
       mush: S.mushrooms.map((m) => [r1(m.x), m.node, m.root, m.mother ? S.mushrooms.indexOf(m.mother) : -1, m.stage, m.species || '', ti(m.tree), m.ring ? 1 : 0, m.spore ? 1 : 0]),
       nets: S.nets.filter((n) => !n.dead).map((n) => ({ kind: n.kind, x: r1(n.x), strength: n.strength, mushStage: n.mushStage,
@@ -3917,9 +3917,8 @@
       grid.get(k).push(idx);
     }
     S.rocks = snap.rocks.map(([s, x, bottom, scale, flip, cx, cy, rx, ry]) => ({ s, x, bottom, scale, flip: !!flip, cx, cy, rx, ry }));
-    S.decor = snap.decor.map(([s, x, scale, flip, layer]) => ({ s, x, scale, flip: !!flip, layer }));
-    S.decor.push({ s: 'robin', x: S.startX + 320, scale: 0.22, flip: true, layer: 1, robin: true, peck: 0, wait: 2 });
-    S.trees = snap.trees.map(([di, allied, node, root, trust, payT, health, dead, paid]) => {
+    S.decor = snap.decor.map(([s, x, scale, flip, layer, robin]) => (robin ? { s, x, scale, flip: !!flip, layer, robin: true, peck: 0, wait: 2 } : { s, x, scale, flip: !!flip, layer }));
+    S.trees = snap.trees.filter(([di]) => S.decor[di] && TREE_KINDS[S.decor[di].s]).map(([di, allied, node, root, trust, payT, health, dead, paid]) => {
       const d = S.decor[di];
       return { d, kind: d.s, info: TREE_KINDS[d.s], x: d.x, allied: !!allied, node, root, trust, payT, kidT: 4, side: 1, kids: [],
         health, infest: null, dead: !!dead, sugarQ: 0, qT: 0, paidOnce: !!paid };
