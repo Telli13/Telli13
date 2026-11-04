@@ -5,6 +5,7 @@
  * stock grows mushrooms on the surface through 6 stages.
  *
  * v2: levels, dangers (grubs, hedgehog, rabbit, squirrel), spore reproduction.
+ * v12: worlds 10x larger (up to 16000 x 4500) with zoom 25-200% (wheel, +/-, pinch).
  * v11: animals move with code-driven squash & stretch, waddles, hops, wing beats and body waves.
  * v10: a rotting log to trade water for organic matter, and honey fungus that kills trees.
  * v9: neighbouring fungi — golden kin to merge with, a purple rival to fight at the front.
@@ -47,7 +48,8 @@
   const SPROUT_DEPTH = 10;         // a thread this close to the grass line can sprout a child
   const GRUB_SAFE_DEPTH = 22;
   const CHEW_TIME = 2.2;
-  const TILE = 512;                // mycelium layer tile size (world px)
+  const TILE = 512;
+  const STRIP = 2400;              // width of the painted soil strip that repeats along the grass line                // mycelium layer tile size (world px)
   const CAM_SPEED = 950;           // px / s for keyboard panning
 
   const RES = {
@@ -75,61 +77,61 @@
     bird:     { name: 'Синица', scale: 0.22, speed: 300, eat: 2.4, prey: [1, 2], verb: 'склевала' },
   };
 
-  const CONTROLS = 'Карту двигают стрелки / WASD, колесо мыши, перетаскивание неба или клик по мини-карте.';
+  const CONTROLS = 'Карта большая: колесо мыши (или +/−, два пальца на телефоне) приближает и отдаляет, стрелки / WASD и перетаскивание неба двигают, мини-карта переносит.';
 
   const LEVELS = [
     {
       name: 'Пробуждение',
       text: 'Грибница проснулась. Растите нити к ресурсам и вырастите первый гриб. Звери пока сыты. ' + CONTROLS,
       goal: { ripeNow: 1 },
-      seed: 11, ww: 2400, wh: 1250, rocks: 12, pools: 1, cap: 18,
-      plan: { water: 5, organic: 5, mineral: 4, sugar: 4 },
-      maxMushrooms: 6, hunters: [], pests: null, ants: null, par: 100, neighbors: ['rot'],
+      seed: 11, ww: 9600, wh: 3125, rocks: 120, pools: 5, cap: 108,
+      plan: { water: 40, organic: 40, mineral: 32, sugar: 32 },
+      maxMushrooms: 6, hunters: [], pests: null, ants: null, par: 160, neighbors: ['rot'],
     },
     {
       name: 'Дети',
       text: 'Когда мать дорастёт до 3-й стадии, ведите нить к самой поверхности подальше от неё — там из корней вырастет гриб-ребёнок. Осторожно: заяц обожает молодые грибы, а мокрица объедает кончики нитей — кликайте по ним!',
-      goal: { children: 2 },
-      seed: 22, ww: 3000, wh: 1400, rocks: 17, pools: 2, cap: 20,
-      plan: { water: 7, organic: 6, mineral: 5, sugar: 4 },
+      goal: { children: 3 },
+      seed: 22, ww: 12000, wh: 3500, rocks: 170, pools: 10, cap: 120,
+      plan: { water: 56, organic: 48, mineral: 40, sugar: 32 },
       maxMushrooms: 8, hunters: ['rabbit'], attackEvery: [18, 26], neighbors: ['kin', 'rot'],
-      pests: { kinds: ['woodlouse'], every: [22, 30], max: 1 }, ants: null, par: 220,
+      pests: { kinds: ['woodlouse'], every: [22, 30], max: 1 }, ants: null, par: 352,
     },
     {
       name: 'Споры',
       text: 'Зрелый гриб может выпустить споры: кликните по нему и по месту на поверхности — там начнётся новая колония со своими корнями. Синица пикирует на маленькие грибы, а под землёй ползают мокрицы и червяки.',
-      goal: { roots: 2, ripeNow: 2 },
-      seed: 33, ww: 3400, wh: 1500, rocks: 20, pools: 2, cap: 20,
-      plan: { water: 7, organic: 6, mineral: 6, sugar: 5 },
+      goal: { roots: 3, ripeNow: 2 },
+      seed: 33, ww: 13600, wh: 3750, rocks: 200, pools: 10, cap: 120,
+      plan: { water: 56, organic: 48, mineral: 48, sugar: 40 },
       maxMushrooms: 9, hunters: ['rabbit', 'bird'], attackEvery: [16, 24], neighbors: ['kin', 'rival'],
-      pests: { kinds: ['woodlouse', 'worm'], every: [18, 26], max: 2 }, ants: null, par: 300,
+      pests: { kinds: ['woodlouse', 'worm'], every: [18, 26], max: 2 }, ants: null, par: 480,
     },
     {
       name: 'Подземные воры',
       text: 'Под землёй вредители: личинка перегрызает нить, червяк роет ход и рвёт всё на пути, мокрица объедает кончики. Если нить к ребёнку оборвётся — ребёнок погибнет. Муравьи утаскивают ресурсы. Кликайте по всем, чтобы прогнать.',
-      goal: { children: 3 },
-      seed: 44, ww: 3400, wh: 1600, rocks: 22, pools: 2, cap: 20,
-      plan: { water: 7, organic: 7, mineral: 6, sugar: 5 },
+      goal: { children: 4 },
+      seed: 44, ww: 13600, wh: 4000, rocks: 220, pools: 10, cap: 120,
+      plan: { water: 56, organic: 56, mineral: 48, sugar: 40 },
       maxMushrooms: 9, hunters: ['rabbit'], attackEvery: [22, 30], neighbors: ['rival', 'parasite', 'rot'],
-      pests: { kinds: ['grub', 'worm', 'woodlouse'], every: [12, 18], max: 3 }, ants: { every: [16, 24], max: 2 }, par: 320,
+      pests: { kinds: ['grub', 'worm', 'woodlouse'], every: [12, 18], max: 3 }, ants: { every: [16, 24], max: 2 }, par: 512,
     },
     {
       name: 'Голодные звери',
       text: 'Ёж ест взрослые грибы, заяц — молодые, синица клюёт малышей. Под землёй появился жук в панцире — его надо кликнуть 3 раза. Следите за красными метками по краям экрана — там опасность.',
-      goal: { mushrooms: 5, ripeNow: 2 },
-      seed: 55, ww: 4000, wh: 1700, rocks: 26, pools: 2, cap: 22,
-      plan: { water: 8, organic: 7, mineral: 7, sugar: 6 },
+      goal: { mushrooms: 7, ripeNow: 2 },
+      seed: 55, ww: 16000, wh: 4250, rocks: 260, pools: 10, cap: 132,
+      plan: { water: 64, organic: 56, mineral: 56, sugar: 48 },
       maxMushrooms: 10, hunters: ['hedgehog', 'rabbit', 'bird'], attackEvery: [12, 18], neighbors: ['rival', 'kin', 'parasite'],
-      pests: { kinds: ['grub', 'worm', 'beetle'], every: [14, 20], max: 2 }, ants: null, par: 420,
+      pests: { kinds: ['grub', 'worm', 'beetle'], every: [14, 20], max: 2 }, ants: null, par: 672,
     },
     {
       name: 'Белка-воришка',
       text: 'Белка хватает зрелые грибы и уносит их. Все опасности сразу, тяжёлая каменистая почва и мало ресурсов — богатые залежи прячутся глубже.',
-      goal: { ripeNow: 3, children: 2 },
-      seed: 66, ww: 4000, wh: 1800, rocks: 34, pools: 2, cap: 18,
-      plan: { water: 7, organic: 6, mineral: 6, sugar: 5 },
+      goal: { ripeNow: 4, children: 3 },
+      seed: 66, ww: 16000, wh: 4500, rocks: 340, pools: 10, cap: 108,
+      plan: { water: 56, organic: 48, mineral: 48, sugar: 40 },
       maxMushrooms: 10, hunters: ['hedgehog', 'rabbit', 'squirrel', 'bird'], attackEvery: [10, 15], neighbors: ['rival', 'rival', 'parasite', 'rot'],
-      pests: { kinds: ['grub', 'worm', 'woodlouse', 'beetle'], every: [10, 15], max: 3 }, ants: { every: [18, 26], max: 2 }, par: 500,
+      pests: { kinds: ['grub', 'worm', 'woodlouse', 'beetle'], every: [10, 15], max: 3 }, ants: { every: [18, 26], max: 2 }, par: 800,
     },
   ];
 
@@ -210,7 +212,9 @@
   let RS = 1;                 // backing pixels per logical pixel
   let TS = 1;                 // resolution of the mycelium tiles
   let WW = 2400, WH = 1250;   // world size of the current level
-  const cam = { x: 0, y: 0 };
+  const cam = { x: 0, y: 0, z: 1 };   // z = zoom (1 = 100%)
+  const ZMIN = 0.25, ZMAX = 2;
+  const VW = () => W / cam.z, VH = () => H / cam.z; // world size of the view
   let soilTile = null, soilPattern = null, stripCanvas = null;
   let tiles = new Map();      // mycelium glow layer, split into lazily created tiles
 
@@ -225,7 +229,7 @@
     const newRS = clamp(fit * (window.devicePixelRatio || 1), 0.5, 2);
     if (Math.abs(newRS - RS) < 0.01 && soilTile) return;
     RS = newRS;
-    TS = Math.min(RS, 1.25);
+    TS = Math.min(RS, 1); // mycelium tiles: a big world can hold hundreds of them
     canvas.width = Math.round(W * RS);
     canvas.height = Math.round(H * RS);
     if (state) {
@@ -235,10 +239,19 @@
   }
 
   function clampCam() {
-    cam.x = clamp(cam.x, 0, Math.max(0, WW - W));
-    cam.y = clamp(cam.y, 0, Math.max(0, WH - H));
+    cam.z = clamp(cam.z, Math.max(ZMIN, W / WW, H / WH), ZMAX);
+    cam.x = clamp(cam.x, 0, Math.max(0, WW - VW()));
+    cam.y = clamp(cam.y, 0, Math.max(0, WH - VH()));
   }
-  function centerOn(x, y) { cam.x = x - W / 2; cam.y = y - H / 2; clampCam(); }
+  function centerOn(x, y) { cam.x = x - VW() / 2; cam.y = y - VH() / 2; clampCam(); }
+  // zoom about a screen point, keeping the world point under it in place
+  function zoomAt(z, sx = W / 2, sy = H / 2) {
+    const wx = cam.x + sx / cam.z, wy = cam.y + sy / cam.z;
+    cam.z = clamp(z, Math.max(ZMIN, W / WW, H / WH), ZMAX);
+    cam.x = wx - sx / cam.z; cam.y = wy - sy / cam.z;
+    clampCam();
+  }
+  const toScr = (x, y) => [(x - cam.x) * cam.z, (y - cam.y) * cam.z];
 
   // ---------------------------------------------------------------- world state
   let state = null;
@@ -381,7 +394,7 @@
 
   function makeResource(type, x, y, big, amount) {
     const def = resourceDef(type, big);
-    const depth = clamp((y - SOIL_TOP) / 900, 0, 1);
+    const depth = clamp((y - SOIL_TOP) / 2600, 0, 1); // the deep layers hold the richest deposits
     const rich = 1 + depth * 0.45; // deeper = bigger and richer
     const res = {
       type, s: def.s, x, y, size: def.size * rich, radius: def.size * rich * 0.42,
@@ -471,9 +484,18 @@
         }
       }
     };
-    for (let ring = 0; ring < 110; ring++) {
+    for (let ring = 0; ring < 60; ring++) {
       scan(ring, false);
       if (best >= 0) { scan(ring + 1, true); break; }
+    }
+    if (best < 0) { // far from everything (a huge map): plain scan
+      const nodes = state.nodes;
+      for (let i = 0; i < nodes.length; i++) {
+        const n = nodes[i];
+        if (n.dead) continue;
+        const d = dist(n.x, n.y, x, y);
+        if (d < bd) { bd = d; best = i; }
+      }
     }
     return { i: best, d: bd };
   }
@@ -826,7 +848,7 @@
         const root = nodes[p.path[p.path.length - 1]];
         const slot = hudSlot(p.type);
         // the unit pops out of the knot and flies to the counter (screen space)
-        state.flyers.push({ type: p.type, x0: clamp(root.x - cam.x, -40, W + 40), y0: clamp(GROUND_Y - 10 - cam.y, -40, H + 40), x1: slot.x, y1: slot.y, t: 0 });
+        state.flyers.push({ type: p.type, x0: clamp((root.x - cam.x) * cam.z, -40, W + 40), y0: clamp((GROUND_Y - 10 - cam.y) * cam.z, -40, H + 40), x1: slot.x, y1: slot.y, t: 0 });
         continue;
       }
       const a = nodes[p.path[p.i]], b = nodes[p.path[p.i + 1]];
@@ -876,7 +898,7 @@
   function scareHunter(h) {
     h.state = 'flee';
     h.target = null;
-    h.dir = h.x < cam.x + W / 2 ? -1 : 1;
+    h.dir = h.x < cam.x + VW() / 2 ? -1 : 1;
     burst(h.x, h.ground ? GROUND_Y - 30 : h.y, '255,240,200', 8);
     msg(h.info.name + (h.kind === 'bird' ? ' улетает!' : ' убегает!'), 1.6);
   }
@@ -962,7 +984,7 @@
         h.x += h.dir * (h.state === 'flee' ? 380 : 260) * dt;
         h.walkT += dt;
         h.y = h.kind === 'rabbit' ? -Math.abs(Math.sin(h.walkT * 9)) * 22 : 0;
-        if (h.x < -120 || h.x > WW + 120 || (h.state === 'flee' && Math.abs(h.x - cam.x - W / 2) > W)) {
+        if (h.x < -120 || h.x > WW + 120 || ((h.state === 'flee' || h.state === 'carry') && Math.abs(h.x - cam.x - VW() / 2) > VW() + 400)) {
           h.state = 'away'; h.timer = rr(6, 10); h.carrying = 0;
           if (h.x > -120 && h.x < WW + 120) h.x = h.dir < 0 ? -110 : WW + 110;
         }
@@ -1067,11 +1089,11 @@
     if (state.L.hunters.includes('bird')) { t.active = false; return; }
     if (!t.active) {
       t.wait -= dt;
-      if (t.wait <= 0) { t.active = true; t.dir = rand() < 0.5 ? 1 : -1; t.x = cam.x + (t.dir > 0 ? -120 : W + 120); t.baseY = rr(70, 200); }
+      if (t.wait <= 0) { t.active = true; t.dir = rand() < 0.5 ? 1 : -1; t.x = cam.x + (t.dir > 0 ? -120 : VW() + 120); t.baseY = rr(70, 200); }
     } else {
       t.x += t.dir * 210 * dt;
       t.y = t.baseY + Math.sin(state.t * 5) * 14;
-      if (t.x > cam.x + W + 150 || t.x < cam.x - 150) { t.active = false; t.wait = rr(8, 16); }
+      if (t.x > cam.x + VW() + 150 || t.x < cam.x - 150) { t.active = false; t.wait = rr(8, 16); }
     }
   }
 
@@ -1164,7 +1186,7 @@
 
   function pestFlee(p) {
     p.state = 'flee'; p.t = 0;
-    p.dir = p.x < cam.x + W / 2 ? -1 : 1;
+    p.dir = p.x < cam.x + VW() / 2 ? -1 : 1;
   }
 
   function biteAt(i, info) {
@@ -1310,7 +1332,7 @@
     } else msg('Муравей убегает!', 1.4);
     a.loot = null;
     a.state = 'flee'; a.t = 0;
-    a.dir = a.x < cam.x + W / 2 ? -1 : 1;
+    a.dir = a.x < cam.x + VW() / 2 ? -1 : 1;
   }
 
   // ---- underground ambient critters
@@ -1402,11 +1424,11 @@
     if (soilPattern.setTransform) soilPattern.setTransform(new DOMMatrix([1 / RS, 0, 0, 1 / RS, 0, 0]));
 
     // painted soil tiles along the grass line, faded into the deep soil
-    stripCanvas = makeCanvas(WW * RS, 230 * RS);
+    stripCanvas = makeCanvas(STRIP * RS, 230 * RS); // one strip, repeated along the whole world
     const st = stripCanvas.getContext('2d');
     st.setTransform(RS, 0, 0, RS, 0, 0);
     let x = -20;
-    while (x < WW) {
+    while (x < STRIP) {
       const im = img[pick(['soil_tile_1', 'soil_tile_2', 'soil_tile_3'])];
       const tw = im.width * 0.62, th = im.height * 0.62;
       st.drawImage(im, x, 0, tw, th);
@@ -1418,7 +1440,7 @@
     fade.addColorStop(0.4, 'rgba(0,0,0,1)');
     fade.addColorStop(0.97, 'rgba(0,0,0,0)');
     st.fillStyle = fade;
-    st.fillRect(0, 0, WW, 230);
+    st.fillRect(0, 0, STRIP, 230);
     seed = saved;
   }
 
@@ -1485,8 +1507,8 @@
     ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
   }
 
-  const view = () => ({ x0: cam.x - 60, x1: cam.x + W + 60, y0: cam.y - 60, y1: cam.y + H + 60 });
-  const visibleX = (x, pad = 300) => x > cam.x - pad && x < cam.x + W + pad;
+  const view = () => ({ x0: cam.x - 60, x1: cam.x + VW() + 60, y0: cam.y - 60, y1: cam.y + VH() + 60 });
+  const visibleX = (x, pad = 300) => x > cam.x - pad && x < cam.x + VW() + pad;
 
   // screen space, parallax: the painted forest is mirrored every other copy so it tiles
   function drawBackdrop() {
@@ -1494,16 +1516,21 @@
     ctx.fillRect(0, 0, W, H);
     const bg = img.background;
     const srcH = 800;
-    const dh = srcH * (W / bg.width);
-    const y = GROUND_Y + 14 - dh - cam.y;
+    const z = cam.z, tw = W * Math.max(z, 0.6); // one copy of the painted forest, in screen px
+    const dh = srcH * (tw / bg.width);
+    const y = (GROUND_Y + 14 - cam.y) * z - dh;
     if (y + dh <= 0) return;
-    const px = cam.x * 0.55;
-    const k0 = Math.floor(px / W);
-    for (let k = k0; k <= k0 + 1; k++) {
-      const x = k * W - px;
+    if (y > 0) { // above the painting: the same sky colour
+      ctx.fillStyle = '#9fd3e8';
+      ctx.fillRect(0, 0, W, y + 2);
+    }
+    const px = cam.x * 0.55 * z;
+    const k0 = Math.floor(px / tw);
+    for (let k = k0; k * tw - px < W; k++) {
+      const x = k * tw - px;
       ctx.save();
-      if (k % 2) { ctx.translate(x + W, y); ctx.scale(-1, 1); } else ctx.translate(x, y);
-      ctx.drawImage(bg, 0, 0, bg.width, srcH, -0.5, 0, W + 1, dh);
+      if (k % 2) { ctx.translate(x + tw, y); ctx.scale(-1, 1); } else ctx.translate(x, y);
+      ctx.drawImage(bg, 0, 0, bg.width, srcH, -0.5, 0, tw + 1, dh);
       ctx.restore();
     }
     ctx.save();
@@ -1511,12 +1538,13 @@
     for (let i = 0; i < 4; i++) {
       const x = 380 + i * 260 + Math.sin(state.t * 0.2 + i) * 30;
       const a = 0.045 + 0.025 * Math.sin(state.t * 0.5 + i * 1.7);
-      const g = ctx.createLinearGradient(x, -cam.y, x - 160, GROUND_Y - cam.y);
+      const gy = (GROUND_Y - cam.y) * cam.z, ty = -cam.y * cam.z;
+      const g = ctx.createLinearGradient(x, ty, x - 160, gy);
       g.addColorStop(0, `rgba(255,240,180,${a})`);
       g.addColorStop(1, 'rgba(255,240,180,0)');
       ctx.fillStyle = g;
       ctx.beginPath();
-      ctx.moveTo(x - 30, -cam.y); ctx.lineTo(x + 40, -cam.y); ctx.lineTo(x - 120, GROUND_Y - cam.y); ctx.lineTo(x - 260, GROUND_Y - cam.y);
+      ctx.moveTo(x - 30, ty); ctx.lineTo(x + 40, ty); ctx.lineTo(x - 120, gy); ctx.lineTo(x - 260, gy);
       ctx.fill();
     }
     ctx.restore();
@@ -1537,7 +1565,7 @@
     ctx.fillRect(v.x0, top, v.x1 - v.x0, v.y1 - top);
     if (v.y0 < GROUND_Y + 190) { // the painted strip along the grass line
       const sx = clamp(v.x0, 0, WW), ex = clamp(v.x1, 0, WW);
-      if (ex > sx) ctx.drawImage(stripCanvas, sx * RS, 0, (ex - sx) * RS, 230 * RS, sx, GROUND_Y - 42, ex - sx, 230);
+      for (let k = Math.floor(sx / STRIP) * STRIP; k < ex; k += STRIP) ctx.drawImage(stripCanvas, k, GROUND_Y - 42, STRIP, 230);
     }
     const d = ctx.createLinearGradient(0, GROUND_Y + 40, 0, WH);
     d.addColorStop(0, 'rgba(10,4,2,0.10)');
@@ -2154,7 +2182,7 @@
     }
     ctx.strokeStyle = '#fff';
     ctx.lineWidth = 1.5;
-    ctx.strokeRect(R.x + cam.x * sx, R.y + cam.y * sy, W * sx, H * sy);
+    ctx.strokeRect(R.x + cam.x * sx, R.y + cam.y * sy, VW() * sx, VH() * sy);
     ctx.restore();
   }
 
@@ -2176,7 +2204,7 @@
   function drawThreatMarkers() {
     const pad = 34;
     for (const th of threats()) {
-      const sx = th.x - cam.x, sy = th.y - cam.y;
+      const [sx, sy] = toScr(th.x, th.y);
       if (sx > 0 && sx < W && sy > 0 && sy < H) continue;
       const cx = clamp(sx, pad, W - pad), cy = clamp(sy, pad + 70, H - pad - 40);
       const a = Math.atan2(sy - cy, sx - cx);
@@ -2271,13 +2299,18 @@
     }
 
     drawMinimap();
+    // zoom buttons beside the minimap (handy on a phone)
+    const zr = mmRect(), zx = zr.x - 64;
+    button(zx, zr.y + zr.h - 104, 50, 46, '+', () => zoomAt(cam.z * 1.4), { size: 28 });
+    button(zx, zr.y + zr.h - 50, 50, 46, '−', () => zoomAt(cam.z / 1.4), { size: 28 });
+    text(Math.round(cam.z * 100) + '%', zx + 25, zr.y + zr.h - 116, 13, 'rgba(247,232,198,0.85)', 'center', 600);
     drawThreatMarkers();
 
     ctx.save();
     ctx.globalAlpha = 0.75;
     const hint = state.sporeFrom
       ? 'Кликните по поверхности, куда лететь спорам · Esc — отмена'
-      : 'Клик по почве — расти · по вредителю — прогнать · по зрелому грибу — споры · карта: стрелки, колесо, тянуть небо';
+      : 'Клик по почве — расти · по вредителю — прогнать · по зрелому грибу — споры · колесо / +− — зум · стрелки, тянуть небо — карта';
     text(hint, (W - 330) / 2, H - 16, 14, '#f7e8c6', 'center', 600);
     ctx.restore();
   }
@@ -2383,6 +2416,7 @@
   const easeInOut = (t) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
 
   function startStory(fromMenu) {
+    cam.z = 1;
     newWorld(0);
     buildSoil();
     rebuildMycelium();
@@ -2490,14 +2524,14 @@
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
     drawBackdrop();
-    ctx.setTransform(RS, 0, 0, RS, -cam.x * RS, -cam.y * RS);
+    ctx.setTransform(RS * cam.z, 0, 0, RS * cam.z, -cam.x * RS * cam.z, -cam.y * RS * cam.z);
     drawUnderground();
     drawResources();
     // the soil starts dark and lights up as the camera goes down
     const dark = story.i === 0 ? 0.8 : story.i === 1 ? 0.8 * (1 - clamp(story.t / 1.8, 0, 1)) : 0;
     if (dark > 0) {
       ctx.fillStyle = `rgba(8,4,2,${dark})`;
-      ctx.fillRect(cam.x - 10, GROUND_Y + 30, W + 20, WH);
+      ctx.fillRect(cam.x - 10, GROUND_Y + 30, VW() + 20, WH);
     }
     drawStoryMycelium();
     drawSurface();
@@ -2592,7 +2626,8 @@
       for (const o of list) {
         const ox = o.cx ?? o.x, oy = o.cy ?? o.y;
         // only point at something on screen and clear of the tip panel
-        if (ox - cam.x < 40 || ox - cam.x > W - 380 || oy - cam.y < 80 || oy - cam.y > H - 190) continue;
+        const [qx, qy] = toScr(ox, oy);
+        if (qx < 40 || qx > W - 380 || qy < 80 || qy > H - 190) continue;
         const d = dist(ox, oy, state.startX, GROUND_Y + 60);
         if (d < bd) { bd = d; best = o; }
       }
@@ -2675,9 +2710,9 @@
     const raining = r.t < r.dur;
     // drops: world-space streaks falling through the rain area
     if (raining) {
-      for (let i = 0; i < 22; i++) {
+      for (let i = 0; i < 22 / cam.z; i++) {
         const top = Math.min(cam.y, GROUND_Y) - 60; // drops are only made where the camera looks
-        r.drops.push({ x: rr(cam.x - 140, cam.x + W + 40), y: rr(top, top + 100), v: rr(900, 1200), soak: rr(60, 260) });
+        r.drops.push({ x: rr(cam.x - 140, cam.x + VW() + 40), y: rr(top, top + 100), v: rr(900, 1200), soak: rr(60, 260) });
       }
     }
     for (const d of r.drops) {
@@ -2750,7 +2785,7 @@
     g.addColorStop(0, R.sky + (R.tint * fade) + ')');
     g.addColorStop(1, R.sky + (R.tint * 0.4 * fade) + ')');
     ctx.fillStyle = g;
-    ctx.fillRect(cam.x - 100, Math.min(0, cam.y) - 40, W + 200, GROUND_Y + 60 - Math.min(0, cam.y));
+    ctx.fillRect(cam.x - 100, Math.min(0, cam.y) - 40, VW() + 200, GROUND_Y + 60 - Math.min(0, cam.y));
     ctx.strokeStyle = `rgba(${R.drops},${0.75 * fade})`;
     ctx.lineWidth = 2.2;
     ctx.beginPath();
@@ -2770,11 +2805,11 @@
     // a band of heavy clouds over the rain area (screen space)
     const R = RAINS[r.kind];
     const fade = Math.min(1, r.t / 0.6, Math.max(0, (r.dur + 0.8 - r.t) / 0.8));
-    const top = -cam.y;
+    const top = -cam.y * cam.z;
     if (top > -260) {
       ctx.save();
-      for (let x = Math.floor(cam.x / 110) * 110 - 110; x < cam.x + W + 160; x += 110) {
-        const sx = x - cam.x, wob = Math.sin(x * 0.013 + state.t * 0.4) * 18;
+      for (let x = Math.floor(cam.x / 110) * 110 - 110; x < cam.x + VW() + 160; x += 110 / Math.min(1, cam.z * 2)) {
+        const sx = (x - cam.x) * cam.z, wob = Math.sin(x * 0.013 + state.t * 0.4) * 18;
         if (sx < -160 || sx > W + 160) continue;
         const g = ctx.createRadialGradient(sx, top + 30 + wob, 10, sx, top + 30 + wob, 150);
         g.addColorStop(0, `rgba(${R.cloud},${0.85 * fade})`);
@@ -2890,14 +2925,14 @@
     ctx.globalCompositeOperation = 'lighter';
     if (cam.y < 160) { // stars and the moon in the top of the sky
       for (let i = 0; i < 40; i++) {
-        const sx = (i * 397) % W, sy = 12 + (i * 53) % 130;
+        const sx = ((i * 397) % W) / cam.z, sy = 12 + (i * 53) % 130;
         const tw = 0.5 + 0.5 * Math.sin(state.t * 2 + i * 1.7);
         ctx.fillStyle = `rgba(230,235,255,${dark * (0.35 + 0.5 * tw)})`;
         ctx.fillRect(cam.x + sx, sy, 2, 2);
       }
-      glowDot(cam.x + W * 0.8, 70, 60, '200,210,255', 0.5 * dark);
+      glowDot(cam.x + VW() * 0.8, 70, 60, '200,210,255', 0.5 * dark);
       ctx.fillStyle = `rgba(240,240,225,${0.9 * dark})`;
-      ctx.beginPath(); ctx.arc(cam.x + W * 0.8, 70, 22, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cam.x + VW() * 0.8, 70, 22, 0, Math.PI * 2); ctx.fill();
     }
     // the mycelium shines brighter in the dark
     ctx.globalAlpha = 0.6 * dark;
@@ -2912,7 +2947,7 @@
       glowDot(r.x, r.y, r.size * 0.7, RES[r.type].glow, 0.3 * dark);
     }
     for (let i = 0; i < 16; i++) { // fireflies over the grass
-      const fx = cam.x + ((i * 137 + state.t * 18 * (1 + (i % 3))) % W);
+      const fx = cam.x + ((i * 137 + state.t * 18 * (1 + (i % 3))) % VW());
       const fy = GROUND_Y - 30 - 70 * Math.abs(Math.sin(state.t * 0.6 + i));
       glowDot(fx, fy, 7, '200,255,120', 0.8 * dark * (0.4 + 0.6 * Math.abs(Math.sin(state.t * 3 + i))));
     }
@@ -3284,7 +3319,7 @@
   function updateNets(dt) {
     for (const net of state.nets) {
       if (net.dead) continue;
-      if (!net.seen && net.x > cam.x + 100 && net.x < cam.x + W - 100) {
+      if (!net.seen && net.x > cam.x + 100 && net.x < cam.x + VW() - 100) {
         net.seen = true;
         msg(TXT.nets.seen[net.kind], 4);
       }
@@ -3442,7 +3477,7 @@
     state.counts.water -= ROT_TRADE.water;
     for (let i = 0; i < ROT_TRADE.organic; i++) {
       const slot = hudSlot('organic');
-      state.flyers.push({ type: 'organic', x0: clamp(net.x - cam.x + (i - 1) * 20, -40, W + 40), y0: clamp(GROUND_Y - 20 - cam.y, -40, H + 40), x1: slot.x, y1: slot.y, t: -i * 0.15 });
+      state.flyers.push({ type: 'organic', x0: clamp((net.x - cam.x) * cam.z + (i - 1) * 20, -40, W + 40), y0: clamp((GROUND_Y - 20 - cam.y) * cam.z, -40, H + 40), x1: slot.x, y1: slot.y, t: -i * 0.15 });
     }
     if (!net.tradedOnce) { net.tradedOnce = true; msg(TXT.nets.rotTraded.replace('{w}', ROT_TRADE.water).replace('{o}', ROT_TRADE.organic), 3); }
   }
@@ -3546,7 +3581,7 @@
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
     drawBackdrop();
-    ctx.setTransform(RS, 0, 0, RS, -cam.x * RS, -cam.y * RS); // world space
+    ctx.setTransform(RS * cam.z, 0, 0, RS * cam.z, -cam.x * RS * cam.z, -cam.y * RS * cam.z); // world space
     drawUnderground();
     drawResources();
     drawMycelium();
@@ -3585,7 +3620,7 @@
     updateAmbient(dt);
     updateCritters(dt);
     updateFx(dt);
-    if (state.pointer) { state.pointer.wx = state.pointer.sx + cam.x; state.pointer.wy = state.pointer.sy + cam.y; }
+    if (state.pointer) { state.pointer.wx = state.pointer.sx / cam.z + cam.x; state.pointer.wy = state.pointer.sy / cam.z + cam.y; }
     if (mode === 'story') updateStory(dt);
     if (mode !== 'play') {
       for (const h of state.hunters) if (h.ground && h.state === 'idle') ambientHunter(h, dt);
@@ -3596,7 +3631,9 @@
     const k = state.keys; // keyboard panning
     const kx = (k.has('ArrowRight') || k.has('d') ? 1 : 0) - (k.has('ArrowLeft') || k.has('a') ? 1 : 0);
     const ky = (k.has('ArrowDown') || k.has('s') ? 1 : 0) - (k.has('ArrowUp') || k.has('w') ? 1 : 0);
-    if (kx || ky) { cam.x += kx * CAM_SPEED * dt; cam.y += ky * CAM_SPEED * dt; clampCam(); }
+    if (kx || ky) { cam.x += kx * CAM_SPEED * dt / cam.z; cam.y += ky * CAM_SPEED * dt / cam.z; clampCam(); }
+    const kz = (k.has('+') || k.has('=') ? 1 : 0) - (k.has('-') || k.has('_') ? 1 : 0);
+    if (kz) zoomAt(cam.z * Math.exp(kz * 1.6 * dt));
 
     state.time += dt;
     const p = state.pointer;
@@ -3679,22 +3716,48 @@
 
   function setPointer(e, down) {
     const s = toScreen(e);
-    state.pointer = { ...s, wx: s.sx + cam.x, wy: s.sy + cam.y, down };
+    state.pointer = { ...s, wx: s.sx / cam.z + cam.x, wy: s.sy / cam.z + cam.y, down };
     return state.pointer;
   }
 
+  // two fingers on a touch screen: pinch to zoom, move both to pan
+  const touches = new Map();
+  let pinch = null;
+  function pinchInfo() {
+    const [a, b] = [...touches.values()];
+    return { d: Math.hypot(a.sx - b.sx, a.sy - b.sy) || 1, cx: (a.sx + b.sx) / 2, cy: (a.sy + b.sy) / 2 };
+  }
   canvas.addEventListener('pointerdown', (e) => {
     if (!state) return;
+    if (e.pointerType === 'touch') {
+      touches.set(e.pointerId, toScreen(e));
+      if (touches.size === 2 && mode === 'play') { // a second finger: stop growing, start the pinch
+        if (state.activeTip) state.activeTip.alive = false;
+        state.activeTip = null; state.drag = null; state.mmDrag = false;
+        const q = pinchInfo();
+        pinch = { d: q.d, z: cam.z, wx: cam.x + q.cx / cam.z, wy: cam.y + q.cy / cam.z };
+        canvas.setPointerCapture(e.pointerId);
+        return;
+      }
+    }
     const p = setPointer(e, true);
     onPress(p, e.button);
     canvas.setPointerCapture(e.pointerId);
   });
   canvas.addEventListener('pointermove', (e) => {
     if (!state) return;
+    if (e.pointerType === 'touch' && touches.has(e.pointerId)) touches.set(e.pointerId, toScreen(e));
+    if (pinch && touches.size >= 2) {
+      const q = pinchInfo();
+      cam.z = clamp(pinch.z * q.d / pinch.d, Math.max(ZMIN, W / WW, H / WH), ZMAX);
+      cam.x = pinch.wx - q.cx / cam.z; cam.y = pinch.wy - q.cy / cam.z; // the point between the fingers stays put
+      clampCam();
+      return;
+    }
     const p = setPointer(e, state.pointer ? state.pointer.down : false);
     if (state.drag) {
-      cam.x = state.drag.cx - (p.sx - state.drag.sx);
-      cam.y = state.drag.cy - (p.sy - state.drag.sy);
+      cam.x = state.drag.cx - (p.sx - state.drag.sx) / cam.z;
+      cam.y = state.drag.cy - (p.sy - state.drag.sy) / cam.z;
       clampCam();
       canvas.style.cursor = 'grabbing';
       return;
@@ -3706,8 +3769,9 @@
       : mode !== 'play' ? 'default'
         : (p.wy >= SOIL_TOP || state.sporeFrom) ? 'crosshair' : 'grab';
   });
-  const up = () => {
+  const up = (e) => {
     if (!state) return;
+    if (e && e.pointerType === 'touch') { touches.delete(e.pointerId); if (touches.size < 2) pinch = null; }
     if (state.pointer) state.pointer.down = false;
     state.activeTip = null;
     state.drag = null;
@@ -3721,9 +3785,10 @@
     if (!state || mode !== 'play') return;
     e.preventDefault();
     const f = e.deltaMode === 1 ? 30 : 1;
-    if (e.shiftKey) cam.x += (e.deltaY + e.deltaX) * f;
-    else { cam.x += e.deltaX * f; cam.y += e.deltaY * f; }
-    clampCam();
+    if (e.shiftKey) { cam.x += (e.deltaY + e.deltaX) * f / cam.z; clampCam(); return; } // Shift: pan sideways
+    if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) { cam.x += e.deltaX * f / cam.z; clampCam(); return; } // trackpad swipe
+    const s = toScreen(e);
+    zoomAt(cam.z * Math.exp(-e.deltaY * f * 0.0015), s.sx, s.sy); // wheel / pinch: zoom at the cursor
   }, { passive: false });
 
   const KEYMAP = { ц: 'w', ф: 'a', ы: 's', в: 'd', W: 'w', A: 'a', S: 's', D: 'd', Ц: 'w', Ф: 'a', Ы: 's', В: 'd' };
@@ -3781,6 +3846,6 @@
     get timeScale() { return timeScale; }, set timeScale(v) { timeScale = Math.max(1, Math.min(16, v | 0)); },
     scareHunter, hitPest, scareAnt, releaseSpores, sporeSpotProblem, mergeKin, callRain,
     growthTarget, canSpore, goalLines, nearestNode, openMenu,
-    get buttons() { return buttons; },
+    get buttons() { return buttons; }, zoomAt,
   };
 })();
