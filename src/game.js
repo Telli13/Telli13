@@ -5,6 +5,7 @@
  * stock grows mushrooms on the surface through 6 stages.
  *
  * v2: levels, dangers (grubs, hedgehog, rabbit, squirrel), spore reproduction.
+ * v19: new art: day/night forest paintings, animation frames, fox/wolf/badger guests, the boar, spiders.
  * v18: synthesized music and sound effects, a narrated intro, 3D titles (src/audio.js).
  * v17: forest events: a tree's request, drought, leaf fall, a swarm of pests.
  * v16: mushroom kinds to choose (death cap, decoy, glowing) and mutations picked after each level.
@@ -81,7 +82,8 @@
     rabbit:   { name: 'Заяц',  scale: 0.27, speed: 95,  eat: 2.6, prey: [1, 3], verb: 'объел' },
     hedgehog: { name: 'Ёж',    scale: 0.27, speed: 60,  eat: 3.6, prey: [3, 6], verb: 'съел' },
     squirrel: { name: 'Белка', scale: 0.24, speed: 140, eat: 1.8, prey: [5, 6], verb: 'украла' },
-    bird:     { name: 'Синица', scale: 0.22, speed: 300, eat: 2.4, prey: [1, 2], verb: 'склевала' },
+    bird:     { name: 'Малиновка', scale: 0.22, speed: 300, eat: 2.4, prey: [1, 2], verb: 'склевала' },
+    boar:     { name: 'Кабан', scale: 0.3, speed: 110, eat: 2.5, prey: [1, 6], verb: 'сожрал' },
   };
 
   const CONTROLS = 'Карта большая: колесо мыши (или +/−, два пальца на телефоне) приближает и отдаляет, стрелки / WASD и перетаскивание неба двигают, мини-карта переносит.';
@@ -152,8 +154,10 @@
     'rock_mossy', 'rock_1', 'rock_2', 'rock_3', 'rock_4',
     'roots_stump', 'roots_long', 'roots_turf',
     'water_drop', 'water_pool', 'leaf', 'crystal', 'sugar',
-    'worm', 'woodlouse', 'grub', 'beetle', 'ant', 'log', 'leaf_pile',
+    'worm', 'woodlouse', 'grub', 'beetle', 'ant', 'log', 'leaf_pile', 'bg_day.jpg', 'bg_night.jpg',
   ];
+  // the second art sheet (tools/cut_sheet2.py): animation frames, new animals and mushrooms
+  const SPRITES2 = ['rabbit_sit', 'rabbit_sit2', 'rabbit_crouch', 'rabbit_hop1', 'rabbit_hop2', 'rabbit_leap', 'rabbit_sleep', 'hedgehog_1', 'hedgehog_2', 'hedgehog_3', 'hedgehog_4', 'hedgehog_ball', 'squirrel_sit', 'squirrel_sit2', 'squirrel_stand', 'squirrel_run1', 'squirrel_run2', 'squirrel_eat', 'squirrel_eat2', 'robin_stand', 'robin_peck', 'robin_fly1', 'robin_fly2', 'robin_fly3', 'robin_stand2', 'fox_sit', 'fox_stand', 'fox_walk1', 'fox_walk2', 'fox_run', 'boar_1', 'boar_2', 'boar_3', 'boar_root', 'boar_puff', 'wolf_1', 'wolf_2', 'wolf_3', 'wolf_growl', 'badger_1', 'badger_2', 'badger_3', 'spider_1', 'spider_2', 'spider_3', 'ant_1', 'ant_2', 'ant_3', 'beetle_1', 'beetle_2', 'beetle_3', 'louse_1', 'louse_2', 'louse_ball', 'worm_long', 'worm_short', 'grub_1', 'grub_2', 'amanita_1', 'amanita_2', 'amanita_3', 'amanita_4', 'blue_1', 'blue_2', 'blue_3', 'purple_1', 'chant_1', 'chant_2', 'chant_3', 'chant_4', 'pink_cluster', 'bracket_stump', 'bolete', 'bolete_cluster'];
 
   // ---------------------------------------------------------------- helpers
   let seed = 1;
@@ -173,15 +177,55 @@
 
   const img = {};
   function loadSprites() {
-    return Promise.all(SPRITES.map((name) => new Promise((resolve, reject) => {
+    const one = (dir, name) => new Promise((resolve, reject) => {
       const file = name.includes('.') ? name : name + '.png';
       const key = name.replace(/\.\w+$/, '');
       const im = new Image();
       im.onload = () => { img[key] = im; resolve(); };
-      im.onerror = () => reject(new Error('Не удалось загрузить art/sprites/' + file));
-      im.src = 'art/sprites/' + file;
-    })));
+      im.onerror = () => reject(new Error('Не удалось загрузить ' + dir + file));
+      im.src = dir + file;
+    });
+    return Promise.all([...SPRITES.map((n) => one('art/sprites/', n)), ...SPRITES2.map((n) => one('art/sprites2/', n))]).then(applyArt2);
   }
+
+  // switch the animals and pests to the new art (the frames have one shared scale per animal)
+  function applyArt2() {
+    const fit = (name, h) => h / img[name].height;
+    HUNTERS.rabbit.scale = fit('rabbit_sit', 100); img.rabbit = img.rabbit_sit;
+    HUNTERS.hedgehog.scale = fit('hedgehog_1', 80); img.hedgehog = img.hedgehog_1;
+    HUNTERS.squirrel.scale = fit('squirrel_sit', 96); img.squirrel = img.squirrel_sit;
+    HUNTERS.bird.scale = fit('robin_stand', 56); img.bluetit = img.robin_fly2;
+    HUNTERS.boar.scale = fit('boar_1', 118); img.boar = img.boar_1;
+  }
+
+  // the frame an animal shows now
+  function animalFrame(h) {
+    const k = h.kind, st = h.state, moving = isMoving(h), cyc = (n, fps) => Math.floor(h.walkT * fps) % n;
+    if (k === 'rabbit') {
+      if (st === 'sleep') return img.rabbit_sleep;
+      if (st === 'eat') return img.rabbit_crouch;
+      if (h.y < -14) return img.rabbit_leap;
+      if (h.y < -2) return h.y < (h.lastY ?? 0) ? img.rabbit_hop1 : img.rabbit_hop2;
+      if (moving) return img.rabbit_crouch;
+      return Math.floor(state.t / 2.6 + h.home) % 3 === 0 ? img.rabbit_sit2 : img.rabbit_sit;
+    }
+    if (k === 'hedgehog') {
+      if (st === 'sleep' || st === 'flee') return img.hedgehog_ball;
+      if (st === 'eat') return img.hedgehog_3;
+      if (moving) return img['hedgehog_' + (1 + cyc(4, 8))];
+      return img.hedgehog_1;
+    }
+    if (k === 'squirrel') {
+      if (st === 'eat') return Math.floor(state.t * 5) % 2 ? img.squirrel_eat : img.squirrel_eat2;
+      if (st === 'sleep') return img.squirrel_sit2;
+      if (moving) return cyc(2, 9) ? img.squirrel_run1 : img.squirrel_run2;
+      if (h.flick) return img.squirrel_stand;
+      return Math.floor(state.t / 3 + h.home) % 4 === 0 ? img.squirrel_sit2 : img.squirrel_sit;
+    }
+    return img[k];
+  }
+  const ROBIN_FLY = ['robin_fly1', 'robin_fly2', 'robin_fly3', 'robin_fly2'];
+  const flyFrame = (t) => img[ROBIN_FLY[Math.floor(t * 11) % 4]];
 
   function makeCanvas(w, h) {
     const c = document.createElement('canvas');
@@ -304,7 +348,7 @@
       clock: 5, dark: 0, phase: 'day', shadeTimer: 3,
       trees: [], ringT: 5, kidShown: {}, ringShown: false, nets: [],
       grewOnce: false, fedOnce: false, hitRock: false,
-      base: null, paused: false, sproutKind: 'normal', event: null, eventT: rr(90, 130), gut: [], muts: [], mutChoices: null, mutPick: null,
+      base: null, paused: false, sproutKind: 'normal', guests: [], guestT: rr(45, 70), boar: null, event: null, eventT: rr(90, 130), gut: [], muts: [], mutChoices: null, mutPick: null,
     };
     if (blank) return;
     makeDecor();
@@ -718,7 +762,7 @@
   }
 
   function mushroomBox(m) {
-    const im = img['mushroom_' + Math.max(1, m.stage)];
+    const im = mushImg(m, Math.max(1, m.stage));
     const w = im.width * MUSH_SCALE, h = im.height * MUSH_SCALE;
     return { x: m.x - w / 2, y: GROUND_Y + 14 - h, w, h };
   }
@@ -1219,16 +1263,18 @@
   //   woodlouse — nibbles off the fresh ends of branches, three bites
   //   beetle    — armoured (3 clicks), goes for the thick threads near a mushroom
   const PESTS = {
-    grub:      { name: 'Личинка', sprite: 'grub', scale: 0.3, speed: 30, chew: CHEW_TIME, hit: 40, hp: 1, faceRight: false, bit: 'Личинка перегрызла нить',
+    grub:      { name: 'Личинка', sprite: 'grub_1', frames: ['grub_1', 'grub_2'], scale: 0.6, speed: 30, chew: CHEW_TIME, hit: 40, hp: 1, faceRight: true, bit: 'Личинка перегрызла нить',
       first: 'Личинка! Кликните по ней, пока она не перегрызла нить' },
-    worm:      { name: 'Червяк', sprite: 'worm', scale: 0.32, speed: 34, chew: 0, hit: 50, hp: 1, faceRight: true, bit: 'Червяк порвал нить',
+    worm:      { name: 'Червяк', sprite: 'worm_long', scale: 0.45, speed: 34, chew: 0, hit: 50, hp: 1, faceRight: true, bit: 'Червяк порвал нить',
       first: 'Червяк роет ход и рвёт все нити на пути! Кликните по нему' },
-    woodlouse: { name: 'Мокрица', sprite: 'woodlouse', scale: 0.24, speed: 42, chew: 1.3, hit: 38, hp: 1, faceRight: false, bit: 'Мокрица объела кончик нити',
+    woodlouse: { name: 'Мокрица', sprite: 'louse_1', frames: ['louse_1', 'louse_2'], ball: 'louse_ball', scale: 0.6, speed: 42, chew: 1.3, hit: 38, hp: 1, faceRight: true, bit: 'Мокрица объела кончик нити',
       first: 'Мокрица объедает молодые кончики нитей! Кликните по ней' },
-    beetle:    { name: 'Жук', sprite: 'beetle', scale: 0.27, speed: 22, chew: 3.0, hit: 42, hp: 3, faceRight: false, bit: 'Жук перегрыз толстую нить',
+    beetle:    { name: 'Жук', sprite: 'beetle_1', frames: ['beetle_1', 'beetle_2', 'beetle_3'], scale: 0.55, speed: 22, chew: 3.0, hit: 42, hp: 3, faceRight: true, bit: 'Жук перегрыз толстую нить',
       first: 'Жук в панцире грызёт толстые нити! Кликните по нему 3 раза' },
-    shade:     { name: 'Тень-жук', sprite: 'shade', scale: 0.3, speed: 38, chew: 2.0, hit: 44, hp: 2, faceRight: false, bit: 'Тень-жук перегрыз нить',
+    shade:     { name: 'Тень-жук', sprite: 'beetle_1', frames: ['beetle_1', 'beetle_2', 'beetle_3'], shade: true, scale: 0.62, speed: 38, chew: 2.0, hit: 44, hp: 2, faceRight: true, bit: 'Тень-жук перегрыз нить',
       first: 'Ночью из глубины лезут тени-жуки! Кликните по такому дважды' },
+    spider:    { name: 'Паук', sprite: 'spider_1', frames: ['spider_1', 'spider_2', 'spider_3'], scale: 0.5, speed: 40, chew: 1.6, hit: 42, hp: 1, faceRight: true, bit: 'Паук порвал нить',
+      first: 'Ночью вылезают пауки и рвут нити! Кликните по пауку' },
   };
 
   function spawnNear(x, y, minD, maxD) {
@@ -1642,25 +1688,29 @@
   function drawBackdrop() {
     ctx.fillStyle = '#1b100a';
     ctx.fillRect(0, 0, W, H);
-    const bg = img.background;
-    const srcH = 800;
-    const z = cam.z, tw = W * Math.max(z, 0.6); // one copy of the painted forest, in screen px
-    const dh = srcH * (tw / bg.width);
-    const y = (GROUND_Y + 14 - cam.y) * z - dh;
-    if (y + dh <= 0) return;
-    if (y > 0) { // above the painting: the same sky colour
-      ctx.fillStyle = '#9fd3e8';
-      ctx.fillRect(0, 0, W, y + 2);
-    }
-    const px = cam.x * 0.55 * z;
-    const k0 = Math.floor(px / tw);
-    for (let k = k0; k * tw - px < W; k++) {
-      const x = k * tw - px;
+    const night = state.dark || 0;
+    // the day painting, with the night painting fading in over it
+    for (const [bg, alpha, sky] of [[img.bg_day, 1, '#9fd6ec'], [img.bg_night, night, '#0a1a3a']]) {
+      if (alpha <= 0.01) continue;
+      const z = cam.z, tw = W * Math.max(z, 0.6); // one copy of the painted forest, in screen px
+      const dh = bg.height * (tw / bg.width);
+      const y = (GROUND_Y + 26 - cam.y) * z - dh;
+      if (y + dh <= 0) continue;
       ctx.save();
-      if (k % 2) { ctx.translate(x + tw, y); ctx.scale(-1, 1); } else ctx.translate(x, y);
-      ctx.drawImage(bg, 0, 0, bg.width, srcH, -0.5, 0, tw + 1, dh);
+      ctx.globalAlpha = alpha;
+      if (y > 0) { ctx.fillStyle = sky; ctx.fillRect(0, 0, W, y + 2); } // above the painting: its sky colour
+      const px = cam.x * 0.55 * z;
+      const k0 = Math.floor(px / tw);
+      for (let k = k0; k * tw - px < W; k++) {
+        const x = k * tw - px;
+        ctx.save();
+        if (k % 2) { ctx.translate(x + tw, y); ctx.scale(-1, 1); } else ctx.translate(x, y);
+        ctx.drawImage(bg, -0.5, 0, tw + 1, dh);
+        ctx.restore();
+      }
       ctx.restore();
     }
+    if (night > 0.6) return; // no sun rays at night
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     for (let i = 0; i < 4; i++) {
@@ -1718,19 +1768,18 @@
     }
     for (const c of state.critters) {
       if (!visibleX(c.x)) continue;
-      const im = img[c.s];
       ctx.save();
-      ctx.globalAlpha = 0.85;
-      if (c.s === 'worm') { // the worm faces right in its picture
+      ctx.globalAlpha = 0.9;
+      if (c.s === 'worm') { // both new pictures face right
+        const im = img.worm_long, sc = 0.4;
         ctx.translate(c.x, c.y);
         ctx.scale(c.dir < 0 ? -1 : 1, 1);
-        drawWavy(im, c.scale, state.t * 4 + c.x * 0.05, 4, 1.3);
-      } else { // woodlouse faces left; it scurries
-        const j = state.t * 34 + c.x;
-        ctx.translate(c.x, c.y + Math.sin(j) * 0.7);
-        ctx.rotate(Math.sin(j * 0.8) * 0.03);
-        ctx.scale(c.dir > 0 ? -1 : 1, 1);
-        ctx.drawImage(im, -im.width * c.scale / 2, -im.height * c.scale / 2, im.width * c.scale, im.height * c.scale);
+        drawWavy(im, sc, state.t * 4 + c.x * 0.05, 4, 1.1);
+      } else { // woodlouse scurries
+        const im = img['louse_' + (1 + Math.floor(state.t * 7 + c.x) % 2)], sc = 0.5;
+        ctx.translate(c.x, c.y);
+        ctx.scale(c.dir > 0 ? 1 : -1, 1);
+        ctx.drawImage(im, -im.width * sc / 2, -im.height * sc / 2, im.width * sc, im.height * sc);
       }
       ctx.restore();
     }
@@ -1822,8 +1871,11 @@
     for (const g of state.pests) {
       if (!visibleX(g.x, 100)) continue;
       const info = g.info;
-      const im = g.kind === 'shade' ? shadeImg() : img[info.sprite], sc = info.scale;
       const chewing = g.state === 'chew';
+      const moving = g.state === 'seek' || g.state === 'flee';
+      const fname = info.ball && g.state === 'flee' ? info.ball
+        : info.frames ? info.frames[Math.floor(g.t * (chewing ? 10 : moving ? 8 : 2) + g.wig) % info.frames.length] : info.sprite;
+      const im = info.shade ? tinted(fname, SHADE_FILTER) : img[fname], sc = info.scale;
       const wig = Math.sin(g.t * (chewing ? 18 : 6) + g.wig) * (chewing ? 0.08 : 0.05);
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
       glowDot(g.x, g.y, info.hit + Math.sin(g.t * 6) * 5, '255,60,40', g.state === 'flee' ? 0.15 : 0.55);
@@ -1837,13 +1889,13 @@
         if (g.kind === 'worm') ctx.rotate(Math.atan2(g.vy, Math.abs(g.vx)) * g.dir * 0.6);
         ctx.scale(faceRight === info.faceRight ? 1 : -1, 1);
         const speed = chewing ? 14 : 6;
-        if (g.kind === 'worm') drawWavy(im, sc, g.t * speed + g.wig, 6, 1.3);
-        else drawWavy(im, sc, g.t * speed + g.wig, 2.2, 0.8, 1 + 0.07 * Math.sin(g.t * 5 + g.wig));
+        if (g.kind === 'worm') drawWavy(im, sc, g.t * speed + g.wig, 5, 1.1);
+        else { const st = 1 + 0.05 * Math.sin(g.t * 5 + g.wig); ctx.scale(st, 1 / st); ctx.drawImage(im, -im.width * sc / 2, -im.height * sc / 2, im.width * sc, im.height * sc); }
       } else {
         // beetles and woodlice scurry: tiny fast jitter of the body and legs
         const j = g.t * 36 + g.wig;
-        ctx.translate(g.x, g.y + Math.sin(j) * 0.9);
-        ctx.rotate(Math.sin(j * 0.8) * 0.035);
+        ctx.translate(g.x, g.y + Math.sin(j) * 0.6);
+        ctx.rotate(info.ball && g.state === 'flee' ? g.t * 10 * g.dir : Math.sin(j * 0.8) * 0.02);
         ctx.scale(faceRight === info.faceRight ? 1 : -1, 1);
         ctx.scale(1 + 0.025 * Math.sin(j * 1.1) + wig * 0.3, 1 - 0.025 * Math.sin(j * 1.1));
         ctx.drawImage(im, -im.width * sc / 2, -im.height * sc / 2, im.width * sc, im.height * sc);
@@ -1859,15 +1911,14 @@
     }
     for (const a of state.ants) {
       if (!visibleX(a.x, 80)) continue;
-      const im = img.ant, sc = 0.22;
+      const im = img['ant_' + (1 + Math.floor(a.t * 10) % 3)], sc = 0.62;
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
       glowDot(a.x, a.y, 36 + Math.sin(a.t * 7) * 4, '255,60,40', a.state === 'flee' ? 0.12 : 0.5);
       ctx.restore();
       ctx.save();
       ctx.translate(a.x, a.y + Math.sin(a.t * 40) * 0.8);
       ctx.rotate(Math.sin(a.t * 33) * 0.04);
-      ctx.scale(a.dir > 0 ? -1 : 1, 1);
-      ctx.scale(1 + 0.03 * Math.sin(a.t * 45), 1 - 0.03 * Math.sin(a.t * 45));
+      ctx.scale(a.dir > 0 ? 1 : -1, 1);
       ctx.drawImage(im, -im.width * sc / 2, -im.height * sc / 2, im.width * sc, im.height * sc);
       ctx.restore();
       if (a.state === 'carry' && a.loot) {
@@ -1916,7 +1967,7 @@
   function drawHunter(h) {
     if (h.state === 'away' || !visibleX(h.x, 200)) return;
     if (h.ground) {
-      const im = img[h.kind];
+      const im = animalFrame(h);
       const flip = h.dir < 0, fwd = flip ? -1 : 1;
       let bottom = GROUND_Y + 12 + h.y, sx = 1, sy = 1, rot = 0;
       const moving = isMoving(h);
@@ -1924,9 +1975,9 @@
         // a hop: squashed on take-off and landing, stretched in the air, nose up then down
         const air = clamp(-h.y / 22, 0, 1);
         const rising = h.y < (h.lastY ?? 0);
-        if (air < 0.25) { const q = (0.25 - air) / 0.25; sy = 1 - 0.17 * q; sx = 1 + 0.11 * q; }
-        else { sy = 1 + 0.11 * air; sx = 1 - 0.07 * air; }
-        rot = fwd * (rising ? -0.17 : 0.12) * air;
+        if (air < 0.25) { const q = (0.25 - air) / 0.25; sy = 1 - 0.1 * q; sx = 1 + 0.06 * q; }
+        else { sy = 1 + 0.04 * air; sx = 1 - 0.03 * air; }
+        rot = fwd * (rising ? -0.06 : 0.04) * air;
       } else if (h.kind === 'hedgehog' && moving) {
         // a waddle: little steps bounce the body and rock it side to side
         const ph = h.walkT * 11, c = Math.abs(Math.cos(ph));
@@ -1949,9 +2000,10 @@
         const e = Math.sin(state.t * 13);
         rot = fwd * (0.07 + 0.05 * e); sy = 1 - 0.04 * Math.max(0, e); sx = 1 + 0.02 * Math.max(0, e);
       }
-      if (h.state === 'sleep') { // poisoned: lying down, breathing slowly
-        rot = fwd * 0.28; sx = 1.08; sy = 0.86 + 0.03 * Math.sin(state.t * 2);
+      if (h.state === 'sleep') { // poisoned: curled up, breathing slowly
+        rot = h.kind === 'squirrel' ? fwd * 0.25 : 0; sx = 1.02; sy = 0.97 + 0.03 * Math.sin(state.t * 2);
       }
+      if (h.state === 'flee' && h.kind === 'hedgehog') rot = (state.t * 9 * fwd) % (Math.PI * 2); // rolls away as a ball
       h.lastY = h.y;
       drawBody(im, h.x, bottom, h.info.scale, flip, sx, sy, rot);
       if (h.state === 'sleep') {
@@ -1965,14 +2017,15 @@
         drawSprite(ctx, mi, h.x - h.dir * 10, bottom - im.height * h.info.scale * 0.55, MUSH_SCALE * 0.5, false, 1, h.dir * 0.4);
       }
     } else {
-      const im = img.bluetit, sc = h.info.scale;
+      const sc = h.info.scale;
       if (h.state === 'eat') { // perched on the cap: pecking, with a small hop now and then
-        const pk = Math.max(0, Math.sin(state.t * 9));
+        const im = Math.floor(state.t * 4) % 2 ? img.robin_peck : img.robin_stand;
         const hop = Math.max(0, Math.sin(state.t * 1.7)) > 0.96 ? 5 : 0;
-        drawBody(im, h.x, h.y + im.height * sc / 2 - hop, sc, h.dir < 0, 1 + 0.03 * pk, 1 - 0.06 * pk, (h.dir < 0 ? -1 : 1) * 0.45 * pk);
+        drawBody(im, h.x, h.y + img.robin_stand.height * sc / 2 - hop, sc, h.dir < 0);
       } else {
         const wave = Math.sin(h.walkT * 4) * 10; // a gentle wavy flight path
-        drawFlying(im, h.x, h.y + wave, sc, h.dir < 0, state.t * 19 + h.x * 0.01);
+        const im = flyFrame(state.t + h.x * 0.001);
+        drawBody(im, h.x, h.y + wave + im.height * sc / 2, sc, h.dir < 0, 1, 1, Math.sin(h.walkT * 4 + 1) * 0.08);
       }
     }
     if (h.state === 'approach' || h.state === 'eat' || h.state === 'swoop') {
@@ -2000,14 +2053,17 @@
         const land = d.hop > 0 && k > 0.85 ? (k - 0.85) / 0.15 : 0;
         const br = Math.sin(state.t * 3 + d.x) * 0.02;
         const pk = Math.sin(d.peck * Math.PI);
-        drawBody(img.robin, d.x + (d.hopDx || 0) * k, GROUND_Y + 13 - air * 11, d.scale, d.flip,
-          1 + 0.08 * land - 0.04 * air, 1 + br - 0.1 * land + 0.06 * air, (d.flip ? -1 : 1) * 0.35 * pk);
+        const rim = pk > 0.3 ? img.robin_peck : air > 0 ? img.robin_stand2 : img.robin_stand;
+        drawBody(rim, d.x + (d.hopDx || 0) * k, GROUND_Y + 13 - air * 11, 56 / img.robin_stand.height, d.flip,
+          1 + 0.06 * land - 0.03 * air, 1 + br - 0.07 * land + 0.04 * air, 0);
         continue;
       }
       drawSprite(ctx, img[d.s], d.x, GROUND_Y + 13, d.scale, d.flip);
     }
     for (const m of state.mushrooms) if (visibleX(m.x)) drawMushroom(m);
     for (const h of state.hunters) if (h.ground) drawHunter(h);
+    drawGuests();
+    drawBoar();
     for (const d of state.decor) {
       if (d.layer !== 2 || !visibleX(d.x)) continue;
       drawSprite(ctx, img[d.s], d.x, GROUND_Y + 17, d.scale, d.flip);
@@ -2017,7 +2073,7 @@
     if (mode === 'play') drawTrees();
     for (const h of state.hunters) if (!h.ground) drawHunter(h);
     const bt = state.bluetit;
-    if (bt.active) drawFlying(img.bluetit, bt.x, bt.y, 0.22, bt.dir < 0, state.t * 19);
+    if (bt.active) { const im = flyFrame(state.t); const sc = 56 / img.robin_stand.height; drawBody(im, bt.x, bt.y + im.height * sc / 2, sc, bt.dir < 0, 1, 1, Math.sin(state.t * 4) * 0.08); }
   }
 
   function drawMushroom(m) {
@@ -2342,6 +2398,7 @@
     }
     for (const g of state.pests) if (g.state !== 'flee') out.push({ x: g.x, y: g.y });
     for (const a of state.ants) if (a.state !== 'flee') out.push({ x: a.x, y: a.y });
+    if (state.boar && state.boar.state !== 'leave' && state.boar.state !== 'sleep') out.push({ x: state.boar.x, y: GROUND_Y - 40 });
     for (const net of state.nets) if (!net.dead && net.front && state.t - net.frontAt < 3) out.push({ x: net.front.x, y: net.front.y });
     for (const net of state.nets) if (!net.dead && net.kind === 'parasite' && net.target && net.biteNode != null) out.push({ x: net.target.x, y: GROUND_Y + 110 });
     return out;
@@ -3176,6 +3233,8 @@
     return { key: 'day', k: 0, dark: 0, left: 0 };
   }
 
+  const SHADE_FILTER = 'brightness(0.3) saturate(0.5) hue-rotate(220deg)';
+  const NIGHT_PESTS = ['shade', 'spider'];
   function shadeImg() { // the beetle sprite, dyed night-black
     if (!shadeCanvas) {
       const b = img.beetle;
@@ -3197,14 +3256,14 @@
       state.phase = d.key;
       msg(TXT.daynight[d.key], 3.5);
       if (d.key === 'dawn') snd('dawn'); else if (d.key === 'night') snd('night');
-      if (d.key === 'dawn') for (const p of state.pests) if (p.kind === 'shade' && p.state !== 'flee') pestFlee(p);
+      if (d.key === 'dawn') for (const p of state.pests) if (NIGHT_PESTS.includes(p.kind) && p.state !== 'flee') pestFlee(p);
     }
     if (d.key === 'night') {
       state.shadeTimer -= dt;
       if (state.shadeTimer <= 0) {
         state.shadeTimer = rr(7, 12);
-        const alive = state.pests.filter((p) => p.kind === 'shade' && p.state !== 'flee').length;
-        if (alive < 1 + Math.floor(levelIndex / 2)) spawnPest('shade');
+        const alive = state.pests.filter((p) => NIGHT_PESTS.includes(p.kind) && p.state !== 'flee').length;
+        if (alive < 1 + Math.floor(levelIndex / 2)) spawnPest(levelIndex >= 2 && rand() < 0.45 ? 'spider' : 'shade');
       }
     }
   }
@@ -3219,20 +3278,13 @@
       ctx.fillStyle = `rgba(255,110,50,${0.2 * warm})`;
       ctx.fillRect(v.x0, v.y0, v.x1 - v.x0, Math.max(0, GROUND_Y + 20 - v.y0));
     }
+    // the night painting is already dark: the sky and surface get a light shade, the soil a deep one
+    const gy = GROUND_Y + 20;
+    ctx.fillStyle = `rgba(6,10,32,${0.3 * dark})`;
+    ctx.fillRect(v.x0, v.y0, v.x1 - v.x0, Math.max(0, gy - v.y0));
     ctx.fillStyle = `rgba(6,10,32,${0.6 * dark})`;
-    ctx.fillRect(v.x0, v.y0, v.x1 - v.x0, v.y1 - v.y0);
+    ctx.fillRect(v.x0, Math.max(gy, v.y0), v.x1 - v.x0, v.y1 - Math.max(gy, v.y0));
     ctx.globalCompositeOperation = 'lighter';
-    if (cam.y < 160) { // stars and the moon in the top of the sky
-      for (let i = 0; i < 40; i++) {
-        const sx = ((i * 397) % W) / cam.z, sy = 12 + (i * 53) % 130;
-        const tw = 0.5 + 0.5 * Math.sin(state.t * 2 + i * 1.7);
-        ctx.fillStyle = `rgba(230,235,255,${dark * (0.35 + 0.5 * tw)})`;
-        ctx.fillRect(cam.x + sx, sy, 2, 2);
-      }
-      glowDot(cam.x + VW() * 0.8, 70, 60, '200,210,255', 0.5 * dark);
-      ctx.fillStyle = `rgba(240,240,225,${0.9 * dark})`;
-      ctx.beginPath(); ctx.arc(cam.x + VW() * 0.8, 70, 22, 0, Math.PI * 2); ctx.fill();
-    }
     // the mycelium shines brighter in the dark
     ctx.globalAlpha = 0.6 * dark;
     for (const tile of tiles.values()) {
@@ -3257,8 +3309,8 @@
       glowDot(fx, fy, 7, '200,255,120', 0.8 * dark * (0.4 + 0.6 * Math.abs(Math.sin(state.t * 3 + i))));
     }
     for (const p of state.pests) { // eyes in the dark
-      if (p.state === 'flee' || !visibleX(p.x, 60) || (p.kind !== 'shade' && dark < 0.4)) continue;
-      const im = p.kind === 'shade' ? shadeImg() : img[p.info.sprite];
+      if (p.state === 'flee' || !visibleX(p.x, 60) || (!NIGHT_PESTS.includes(p.kind) && dark < 0.4)) continue;
+      const im = p.info.shade ? tinted(p.info.sprite, SHADE_FILTER) : img[p.info.sprite];
       const hx = p.x + p.dir * im.width * p.info.scale * 0.36 * (p.info.faceRight ? 1 : 1);
       const hy = p.y - im.height * p.info.scale * 0.1;
       glowDot(hx, hy - 3, 6, '255,40,30', 0.95 * Math.max(dark, p.kind === 'shade' ? 1 : 0));
@@ -3333,10 +3385,38 @@
     return c;
   }
 
+  // mushroom art for each kind and species: a growing set of pictures, scaled to the stage's size
+  const MUSH_ART = {
+    toxic: ['amanita_1', 'amanita_2', 'amanita_3', 'amanita_4'],
+    glow: ['blue_1', 'blue_2', 'blue_3'],
+    decoy: ['pink_cluster'],
+    spruce: ['chant_1', 'chant_2', 'chant_3', 'chant_4'],
+    oak: ['bolete'],
+    birch: ['bolete_cluster'],
+    rival: ['purple_1'],
+  };
+  const artCache = new Map();
+  function artMush(set, stage) {
+    const key = set + stage;
+    let c = artCache.get(key);
+    if (!c) {
+      const names = MUSH_ART[set], ref = img['mushroom_' + stage];
+      const im = img[names[Math.min(names.length - 1, Math.floor((stage - 1) * names.length / RIPE))]];
+      const hh = ref.height * (set === 'decoy' || set === 'birch' ? 0.8 : 1);
+      c = makeCanvas(im.width * hh / im.height, hh);
+      const g = c.getContext('2d');
+      g.imageSmoothingQuality = 'high';
+      g.drawImage(im, 0, 0, c.width, c.height);
+      artCache.set(key, c);
+    }
+    return c;
+  }
   function mushImg(m, stage) {
-    const name = 'mushroom_' + stage;
-    const f = (m.kind && m.kind !== 'normal' && KINDS[m.kind].filter) || (m.species && SPECIES_FILTER[m.species]);
-    return f ? tinted(name, f) : img[name];
+    stage = Math.max(1, stage);
+    const set = m.kind && m.kind !== 'normal' ? m.kind : m.species;
+    if (set && MUSH_ART[set]) return artMush(set, stage);
+    const f = set && SPECIES_FILTER[set];
+    return f ? tinted('mushroom_' + stage, f) : img['mushroom_' + stage];
   }
 
   function makeTrees() {
@@ -3794,8 +3874,8 @@
   }
 
   function netMushBox(net) {
-    const im = net.kind === 'rot' ? img.log : img['mushroom_' + (net.kind === 'parasite' ? 3 : net.mushStage)];
-    const sc = net.kind === 'rot' ? 0.42 : MUSH_SCALE;
+    const im = net.kind === 'rot' ? img.bracket_stump : net.kind === 'rival' ? artMush('rival', net.mushStage) : img['mushroom_' + (net.kind === 'parasite' ? 3 : net.mushStage)];
+    const sc = net.kind === 'rot' ? 0.95 : MUSH_SCALE;
     const w = im.width * sc, h = im.height * sc;
     return { x: net.x - w / 2, y: GROUND_Y + 14 - h, w, h };
   }
@@ -3866,13 +3946,13 @@
     for (const net of state.nets) {
       if (net.dead || !visibleX(net.x)) continue;
       const sway = Math.sin(state.t * 1.1 + net.x) * 0.012;
-      if (net.kind === 'rot') drawSprite(ctx, img.log, net.x, GROUND_Y + 18, 0.42, false);
+      if (net.kind === 'rot') drawSprite(ctx, img.bracket_stump, net.x, GROUND_Y + 20, 0.95, false);
       else if (net.kind === 'parasite') { // a cluster of honey mushrooms
         const im = tinted('mushroom_2', net.info.filter);
         drawSprite(ctx, im, net.x - 20, GROUND_Y + 14, 0.36, true, 1, sway - 0.08);
         drawSprite(ctx, im, net.x + 18, GROUND_Y + 14, 0.34, false, 1, sway + 0.08);
         drawSprite(ctx, tinted('mushroom_3', net.info.filter), net.x, GROUND_Y + 14, 0.42, false, 1, sway);
-      } else drawSprite(ctx, tinted('mushroom_' + net.mushStage, net.info.filter), net.x, GROUND_Y + 14, MUSH_SCALE, false, 1, sway);
+      } else drawSprite(ctx, net.kind === 'rival' ? artMush('rival', net.mushStage) : tinted('mushroom_' + net.mushStage, net.info.filter), net.x, GROUND_Y + 14, MUSH_SCALE, false, 1, sway);
       const box = netMushBox(net);
       const name = TXT.nets.names[net.kind];
       let sub;
@@ -3899,6 +3979,7 @@
     drought:  { dur: 60 },
     leaffall: { dur: 25 },
     swarm:    { dur: 30 },
+    boar:     { dur: 70 },
   };
 
   function startEvent(kind) {
@@ -3911,6 +3992,7 @@
       E.need = 5;
       E.prize = 6;
     }
+    if (kind === 'boar' && (levelIndex < 2 || !startBoar())) return;
     if (kind === 'swarm') {
       const kinds = state.L.pests ? state.L.pests.kinds : ['grub', 'woodlouse'];
       for (let i = 0; i < 4 + levelIndex; i++) spawnPest(pick(kinds));
@@ -3969,7 +4051,9 @@
         }
       }
     }
+    if (E.kind === 'boar' && !state.boar && E.t > 2) E.t = E.dur; // the boar has gone
     if (E.t >= E.dur) {
+      if (E.kind === 'boar' && state.boar && state.boar.state !== 'leave') boarLeave();
       if (E.kind === 'request' && !E.done) { E.tree.health = Math.max(0.05, E.tree.health - 0.4); E.tree.trust = Math.max(0.05, E.tree.trust - 0.5); msg(fill(TXT.events.request.fail, E), 4); }
       else if (E.kind !== 'request') msg(TXT.events[E.kind].end, 3);
       state.event = null;
@@ -4014,6 +4098,188 @@
       button(px + pw - 156, py + 56, 140, 32, TXT.events.give, giveRequest, { size: 15, primary: ok });
     }
     if (E.kind === 'request' && E.tree) buttons.push({ x: px, y: py, w: pw - 170, h: ph, label: 'ev-goto', onClick: () => centerOn(E.tree.x, GROUND_Y) });
+  }
+
+  // ---------------------------------------------------------------- forest guests and the boar
+  // Guests cross the forest and help in their own way:
+  //   fox (by day)    — rabbits, squirrels and birds near it run away
+  //   wolf (at night) — every animal near it runs, the boar too
+  //   badger          — digs up pests near the surface
+  // The boar is an event: it comes to a mushroom, roots up the threads around it, then eats it.
+  // Three clicks drive it off; a death cap puts it to sleep.
+  const GUESTS = {
+    fox:    { frames: ['fox_walk1', 'fox_stand', 'fox_walk2', 'fox_stand'], run: ['fox_run', 'fox_walk2'], h: 92, speed: 120, reach: 520 },
+    wolf:   { frames: ['wolf_1', 'wolf_2', 'wolf_3', 'wolf_2'], h: 100, speed: 140, reach: 800 },
+    badger: { frames: ['badger_1', 'badger_2', 'badger_3', 'badger_2'], h: 78, speed: 70, reach: 260 },
+  };
+
+  function spawnGuest() {
+    const night = (state.dark || 0) > 0.5;
+    const kind = night ? (rand() < 0.6 ? 'wolf' : 'badger') : (rand() < 0.6 ? 'fox' : 'badger');
+    const dir = rand() < 0.5 ? 1 : -1;
+    const g = { kind, info: GUESTS[kind], dir, x: dir > 0 ? cam.x - 160 : cam.x + VW() + 160, t: 0, hitT: 0.5, walkT: 0 };
+    state.guests.push(g);
+    msg(TXT.guests[kind], 4);
+    snd(kind === 'wolf' ? 'howl' : 'rustle', g.x);
+  }
+
+  function updateGuests(dt) {
+    if (levelIndex >= 1) {
+      state.guestT -= dt;
+      if (state.guestT <= 0) { state.guestT = rr(70, 110); spawnGuest(); }
+    }
+    for (const g of state.guests) {
+      g.t += dt; g.walkT += dt;
+      g.x += g.dir * g.info.speed * dt;
+      if (g.x < -300 || g.x > WW + 300 || g.t > 60) g.gone = true;
+      g.hitT -= dt;
+      if (g.hitT > 0) continue;
+      g.hitT = 0.5;
+      const near = (x) => Math.abs(x - g.x) < g.info.reach;
+      if (g.kind === 'fox' || g.kind === 'wolf') {
+        for (const h of state.hunters) {
+          if (!h.threat || !near(h.x) || ['away', 'flee', 'sleep'].includes(h.state)) continue;
+          if (g.kind === 'fox' && h.kind === 'hedgehog') continue; // a hedgehog is too prickly for a fox
+          scareHunter(h);
+        }
+        if (g.kind === 'wolf' && state.boar && near(state.boar.x) && state.boar.state !== 'leave') boarLeave(TXT.boar.wolf);
+      } else {
+        for (const p of state.pests) if (p.state !== 'flee' && near(p.x) && p.y < SOIL_TOP + 420) { pestFlee(p); burst(p.x, p.y, '200,160,110', 6); }
+      }
+    }
+    state.guests = state.guests.filter((g) => !g.gone);
+  }
+
+  function drawGuests() {
+    for (const g of state.guests) {
+      if (!visibleX(g.x, 200)) continue;
+      const fr = g.info.frames;
+      const im = img[fr[Math.floor(g.walkT * 7) % fr.length]];
+      const sc = g.info.h / img[fr[0]].height;
+      drawBody(im, g.x, GROUND_Y + 13 - Math.abs(Math.sin(g.walkT * 7)) * 2, sc, g.dir < 0);
+    }
+  }
+
+  function startBoar() {
+    const prey = state.mushrooms.filter((m) => m.stage >= 2);
+    if (!prey.length) return false;
+    const c = cam.x + VW() / 2;
+    const m = prey.sort((a, b) => Math.abs(a.x - c) - Math.abs(b.x - c))[0];
+    const dir = rand() < 0.5 ? 1 : -1;
+    state.boar = { x: m.x - dir * 1100, dir, target: m, state: 'walk', hp: 3, t: 0, walkT: 0, rootT: 0, tearT: 0, hurt: 0 };
+    snd('alert', m.x);
+    return true;
+  }
+
+  function boarLeave(text) {
+    const b = state.boar;
+    if (!b) return;
+    b.state = 'leave';
+    b.dir = b.x < cam.x + VW() / 2 ? -1 : 1;
+    if (text) msg(text, 3);
+    snd('scare', b.x);
+  }
+
+  function hitBoar() {
+    const b = state.boar;
+    if (!b || b.state === 'leave' || b.state === 'sleep') return;
+    b.hp--;
+    b.hurt = 0.3;
+    burst(b.x, GROUND_Y - 50, '255,240,200', 10);
+    if (b.hp <= 0) boarLeave(TXT.boar.scared);
+    else { msg(TXT.boar.hit.replace('{n}', b.hp), 1.6); snd('squeak', b.x); }
+  }
+
+  function updateBoar(dt) {
+    const b = state.boar;
+    if (!b) return;
+    b.t += dt;
+    b.hurt = Math.max(0, b.hurt - dt);
+    const alive = b.target && state.mushrooms.includes(b.target);
+    if (b.state === 'walk') {
+      if (!alive) { const ok = startBoarRetarget(); if (!ok) { boarLeave(); return; } }
+      const tx = b.target.x - b.dir * 70;
+      const d = tx - b.x;
+      if (Math.abs(d) < 4) { b.state = 'root'; b.rootT = 6; b.dir = Math.sign(b.target.x - b.x) || b.dir; msg(TXT.boar.roots, 3); snd('munch', b.x); }
+      else { b.dir = Math.sign(d); b.x += b.dir * Math.min(Math.abs(d), HUNTERS.boar.speed * dt); b.walkT += dt; }
+    } else if (b.state === 'root') {
+      b.rootT -= dt;
+      b.tearT -= dt;
+      if (b.tearT <= 0) { // it tears up the threads near the surface around its snout
+        b.tearT = 0.9;
+        const sx = b.x + b.dir * 50;
+        for (let i = 0, cut = 0; i < state.nodes.length && cut < 2; i++) {
+          const n = state.nodes[i];
+          if (n.dead || n.depth < 8 || Math.abs(n.x - sx) > 120 || n.y > SOIL_TOP + 200) continue;
+          killSubtree(i); cut++;
+          state.fx.push({ kind: 'bite', x: n.x, y: n.y, t: 0, life: 0.8 });
+        }
+        burst(sx, GROUND_Y + 4, '150,100,60', 8);
+        snd('bite', b.x, { vol: 0.7 });
+      }
+      if (b.rootT <= 0) {
+        if (alive) {
+          const m = b.target;
+          loseMushroom(m, 'boar');
+          if (m.kind === 'toxic') { b.state = 'sleep'; b.rootT = 15; msg(TXT.boar.poisoned, 3.5); snd('poison', b.x); return; }
+        }
+        boarLeave(TXT.boar.full);
+      }
+    } else if (b.state === 'sleep') {
+      b.rootT -= dt;
+      if (b.rootT <= 0) boarLeave(TXT.boar.wakes);
+    } else if (b.state === 'leave') {
+      b.x += b.dir * 260 * dt; b.walkT += dt;
+      if (b.x < -300 || b.x > WW + 300 || Math.abs(b.x - cam.x - VW() / 2) > VW() + 900) state.boar = null;
+    }
+  }
+
+  function startBoarRetarget() {
+    const b = state.boar;
+    const prey = state.mushrooms.filter((m) => m.stage >= 2);
+    if (!prey.length) return false;
+    b.target = prey.sort((a, c) => Math.abs(a.x - b.x) - Math.abs(c.x - b.x))[0];
+    return true;
+  }
+
+  function boarBox() {
+    const b = state.boar, im = img.boar_1, sc = HUNTERS.boar.scale;
+    return { x: b.x - im.width * sc / 2, y: GROUND_Y + 12 - im.height * sc, w: im.width * sc, h: im.height * sc };
+  }
+
+  function drawBoar() {
+    const b = state.boar;
+    if (!b || !visibleX(b.x, 300)) return;
+    const sc = HUNTERS.boar.scale, flip = b.dir < 0;
+    let im = img['boar_' + (1 + Math.floor(b.walkT * 7) % 3)], rot = 0, sx = 1, sy = 1;
+    if (b.state === 'root') { im = img.boar_root; const k = Math.sin(state.t * 12); rot = (flip ? -1 : 1) * (0.05 + 0.03 * k); }
+    if (b.state === 'sleep') { im = img.boar_3; sx = 1.04; sy = 0.92 + 0.02 * Math.sin(state.t * 2); }
+    if (b.hurt > 0) { sx *= 1.06; sy *= 0.94; }
+    drawBody(im, b.x, GROUND_Y + 13, sc, flip, sx, sy, rot);
+    if (b.state === 'root' && Math.sin(state.t * 5) > 0.3) {
+      const pf = img.boar_puff;
+      drawSprite(ctx, pf, b.x + (flip ? -1 : 1) * im.width * sc * 0.52, GROUND_Y - 10, 0.9, flip, 0.8);
+    }
+    if (b.state === 'sleep') {
+      const k = (state.t * 0.7) % 1;
+      ctx.save(); ctx.globalAlpha = 1 - k;
+      text(k < 0.5 ? 'z' : 'Z', b.x + 30 + k * 18, GROUND_Y - 120 - k * 40, 22 + k * 10, '#d6ffb0', 'center');
+      ctx.restore();
+    }
+    if (b.state === 'walk' || b.state === 'root') { // danger marker and armour pips
+      const box = boarBox(), y = box.y - 24 + Math.sin(state.t * 8) * 3;
+      ctx.save();
+      ctx.fillStyle = '#e8402f';
+      ctx.beginPath(); ctx.arc(b.x, y, 17, 0, Math.PI * 2); ctx.fill();
+      ctx.lineWidth = 3; ctx.strokeStyle = '#fff3e0'; ctx.stroke();
+      ctx.restore();
+      text('!', b.x, y + 1, 22, '#fff3e0', 'center');
+      for (let k = 0; k < 3; k++) {
+        ctx.fillStyle = k < b.hp ? '#ffcf6a' : 'rgba(40,30,25,0.8)';
+        ctx.beginPath(); ctx.arc(b.x - 14 + k * 14, y + 26, 5, 0, Math.PI * 2); ctx.fill();
+      }
+      if (b.state === 'root') ring(b.x, y - 34, 14, 1 - b.rootT / 6, '#ff6a50');
+    }
   }
   function render() {
     if (mode === 'story') { renderStory(); return; }
@@ -4099,6 +4365,8 @@
     if (AUDIO) AUDIO.setNight(state.dark || 0);
     updateGut(dt);
     updateEvents(dt);
+    updateGuests(dt);
+    updateBoar(dt);
     if (state.t - (state.savedAt || 0) > 20) saveMid(); // autosave
     updateTrees(dt);
     updateNets(dt);
@@ -4122,6 +4390,7 @@
     for (const h of state.hunters) {
       if (h.threat && ['approach', 'eat', 'idle', 'return', 'swoop'].includes(h.state) && inBox(p.wx, p.wy, hunterBox(h))) return { kind: 'hunter', h };
     }
+    if (state.boar && inBox(p.wx, p.wy, boarBox())) return { kind: 'boar' };
     for (const g of state.pests) if (g.state !== 'flee' && dist(p.wx, p.wy, g.x, g.y) < g.info.hit) return { kind: 'pest', g };
     for (const net of state.nets) if (net.kind === 'kin' && !net.dead && inBox(p.wx, p.wy, netMushBox(net))) return { kind: 'kin', net };
     for (const a of state.ants) if (a.state !== 'flee' && dist(p.wx, p.wy, a.x, a.y) < 36) return { kind: 'ant', a };
@@ -4155,6 +4424,7 @@
     }
     if (hit && hit.kind === 'hunter') { scareHunter(hit.h); return; }
     if (hit && hit.kind === 'pest') { hitPest(hit.g); return; }
+    if (hit && hit.kind === 'boar') { hitBoar(); return; }
     if (hit && hit.kind === 'kin') { mergeKin(hit.net); return; }
     if (hit && hit.kind === 'ant') { scareAnt(hit.a); return; }
     if (hit && hit.kind === 'mushroom') { state.sporeFrom = hit.m; msg('Кликните по поверхности, куда полетят споры', 3); return; }
@@ -4484,8 +4754,8 @@
     play() { mode = 'play'; },
     // for automated play-tests
     get timeScale() { return timeScale; }, set timeScale(v) { timeScale = Math.max(1, Math.min(16, v | 0)); },
-    scareHunter, hitPest, scareAnt, releaseSpores, sporeSpotProblem, mergeKin, callRain,
+    scareHunter, hitPest, PESTS, scareAnt, releaseSpores, sporeSpotProblem, mergeKin, callRain,
     growthTarget, canSpore, goalLines, nearestNode, openMenu,
-    get buttons() { return buttons; }, startEvent, giveRequest, zoomAt, togglePause, continueLevel, enterLevel, snapshot, saveMid, resumeMid,
+    get buttons() { return buttons; }, spawnGuest, startEvent, giveRequest, zoomAt, togglePause, continueLevel, enterLevel, snapshot, saveMid, resumeMid,
   };
 })();
