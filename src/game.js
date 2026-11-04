@@ -5,6 +5,7 @@
  * stock grows mushrooms on the surface through 6 stages.
  *
  * v2: levels, dangers (grubs, hedgehog, rabbit, squirrel), spore reproduction.
+ * v13: the view fills any screen shape (no black bars).
  * v12: worlds 10x larger (up to 16000 x 4500) with zoom 25-200% (wheel, +/-, pinch).
  * v11: animals move with code-driven squash & stretch, waddles, hops, wing beats and body waves.
  * v10: a rotting log to trade water for organic matter, and honey fungus that kills trees.
@@ -25,8 +26,9 @@
 
 (() => {
   // ---------------------------------------------------------------- constants
-  const W = 1600;                  // view size (logical px)
-  const H = 900;
+  // view size in logical px: at least 1600 x 900, stretched to the screen's shape (set in resize)
+  let W = 1600;
+  let H = 900;
   const GROUND_Y = 430;            // grass line between forest and soil (world y)
   const SOIL_TOP = GROUND_Y + 22;  // mycelium may not grow above this
   const SOIL_PAD = 12;
@@ -220,14 +222,20 @@
 
   function resize() {
     const vw = window.innerWidth, vh = window.innerHeight;
-    const fit = Math.min(vw / W, vh / H);
-    const cssW = Math.floor(W * fit), cssH = Math.floor(H * fit);
+    // fill the whole screen: keep 900 logical px of height on wide screens, 1600 of width on tall ones
+    const aspect = clamp(vw / Math.max(1, vh), 1.2, 2.6);
+    const newW = aspect >= 16 / 9 ? Math.round(900 * aspect) : 1600;
+    const newH = aspect >= 16 / 9 ? 900 : Math.round(1600 / aspect);
+    const fit = Math.min(vw / newW, vh / newH);
+    const cssW = Math.floor(newW * fit), cssH = Math.floor(newH * fit);
     canvas.style.width = cssW + 'px';
     canvas.style.height = cssH + 'px';
     canvas.style.left = Math.floor((vw - cssW) / 2) + 'px';
     canvas.style.top = Math.floor((vh - cssH) / 2) + 'px';
     const newRS = clamp(fit * (window.devicePixelRatio || 1), 0.5, 2);
-    if (Math.abs(newRS - RS) < 0.01 && soilTile) return;
+    if (Math.abs(newRS - RS) < 0.01 && newW === W && newH === H && soilTile) return;
+    W = newW; H = newH;
+    if (state) clampCam();
     RS = newRS;
     TS = Math.min(RS, 1); // mycelium tiles: a big world can hold hundreds of them
     canvas.width = Math.round(W * RS);
@@ -2042,7 +2050,7 @@
   }
 
   // ---------------------------------------------------------------- rendering: HUD
-  const HUD = { x: 800, y: 14, w: 600, h: 58 };
+  const HUD = { get x() { return W / 2; }, y: 14, w: 600, h: 58 };
   function hudSlot(type) {
     const i = RES_ORDER.indexOf(type);
     return { x: HUD.x - HUD.w / 2 + 34 + i * (HUD.w / 4), y: HUD.y + HUD.h / 2 };
