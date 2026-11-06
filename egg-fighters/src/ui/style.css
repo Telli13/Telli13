@@ -1,0 +1,71 @@
+@font-face { font-family: 'Russo One'; font-style: normal; font-weight: 400; font-display: swap;
+  src: url(../../../art/fonts/russo-one-0.woff2) format('woff2'); unicode-range: U+0400-045F; }
+@font-face { font-family: 'Russo One'; font-style: normal; font-weight: 400; font-display: swap;
+  src: url(../../../art/fonts/russo-one-2.woff2) format('woff2'); unicode-range: U+0000-00FF, U+2000-206F; }
+
+html, body { margin: 0; height: 100%; overflow: hidden; background: #1b2840; color: #fff;
+  font-family: 'Russo One', 'Trebuchet MS', system-ui, sans-serif; user-select: none; -webkit-user-select: none; }
+#game { position: absolute; inset: 0; display: block; touch-action: none; }
+#loading { position: absolute; inset: 0; display: grid; place-items: center; font-size: 22px; }
+#ui { position: absolute; inset: 0; pointer-events: none; }
+
+/* finisher: darkened vignette + flash (the big hits of the reference video) */
+.finisher { position: absolute; inset: 0; opacity: 0;
+  background: radial-gradient(ellipse at center, rgba(0,0,0,0) 22%, rgba(10,8,14,.55) 55%, rgba(5,4,8,.9) 100%); }
+.flash { position: absolute; inset: 0; opacity: 0; background: radial-gradient(circle, #fffbe6 0%, rgba(255,230,140,.6) 40%, rgba(255,200,80,0) 75%); mix-blend-mode: screen; }
+
+/* HUD */
+.hud { position: absolute; inset: 0; }
+.bar { position: absolute; top: 14px; width: min(40vw, 420px); }
+.bar0 { left: 16px; } .bar1 { right: 16px; text-align: right; }
+.bar .name { font-size: 18px; text-shadow: 0 2px 0 #000a; margin-bottom: 4px; }
+.bar .track { position: relative; height: 18px; background: #0009; border: 2px solid #fff; border-radius: 6px; overflow: hidden; }
+.bar .fill, .bar .lag { position: absolute; top: 0; bottom: 0; }
+.bar0 .fill, .bar0 .lag { left: 0; } .bar1 .fill, .bar1 .lag { right: 0; }
+.bar .lag { background: #fff6; }
+.bar .stage { font-size: 13px; opacity: .85; margin-top: 3px; text-shadow: 0 1px 0 #000; }
+.combo { position: absolute; top: 80px; font-size: 30px; color: #ffd84a; text-shadow: 0 3px 0 #6b2b00, 0 0 12px #000; opacity: 0; }
+.combo0 { left: 22px; transform-origin: left center; } .combo1 { right: 22px; transform-origin: right center; }
+.combo.pop { animation: pop .9s ease-out forwards; }
+@keyframes pop { 0% { opacity: 1; transform: scale(1.6); } 15% { transform: scale(1); } 75% { opacity: 1; } 100% { opacity: 0; } }
+.banner { position: absolute; left: 0; right: 0; top: 34%; text-align: center; font-size: clamp(40px, 9vw, 96px);
+  color: #fff; text-shadow: 0 5px 0 #b3202b, 0 0 30px #000; opacity: 0; transform: scale(.6); transition: opacity .15s, transform .2s; }
+.banner.show { opacity: 1; transform: scale(1); }
+.banner.ko { color: #ffd84a; text-shadow: 0 6px 0 #6b2b00, 0 0 40px #000; }
+
+/* menu + result */
+.menu, .result { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 18px; pointer-events: auto; background: radial-gradient(ellipse at center, #0000 0%, #0b1426cc 80%); padding: 16px; box-sizing: border-box; }
+.menu h1 { margin: 0; font-size: clamp(34px, 7vw, 70px); line-height: .95; text-align: center; color: #ffe2b8;
+  text-shadow: 0 5px 0 #5a2d16, 0 0 24px #000; font-weight: 400; }
+.menu h1 span { color: #fff; font-size: .8em; }
+.menu .pick { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
+.menu button, .result button { font: inherit; color: #fff; border: 3px solid #fff; border-radius: 14px; padding: 12px 22px; cursor: pointer;
+  background: #2a3f66; box-shadow: 0 5px 0 #0008; font-size: 20px; }
+.menu button:active, .result button:active { transform: translateY(3px); box-shadow: 0 2px 0 #0008; }
+.menu .pk { display: flex; flex-direction: column; min-width: 170px; }
+.menu .pk small { font-size: 13px; opacity: .8; margin-top: 4px; }
+.menu .ninja { background: #b3202b; } .menu .samurai { background: #8c5a12; }
+.menu .watch { font-size: 16px; background: #304a74; }
+.menu .help { display: flex; flex-wrap: wrap; gap: 8px 18px; justify-content: center; font-size: 14px; opacity: .9; max-width: 640px; }
+kbd { display: inline-block; border: 2px solid #fff8; border-radius: 5px; padding: 0 6px; margin-right: 4px; font-family: inherit; }
+.result { background: #0b142699; }
+.result .rt { font-size: clamp(30px, 6vw, 56px); text-shadow: 0 4px 0 #000a; text-align: center; }
+.result .row { display: flex; gap: 14px; }
+
+/* touch controls */
+.touch { position: absolute; inset: 0; }
+.stick-zone { position: absolute; left: 0; bottom: 0; width: 50%; height: 60%; pointer-events: auto; touch-action: none; }
+.stick-base { position: absolute; left: 40px; bottom: 40px; top: auto; width: 120px; height: 120px; border-radius: 50%;
+  background: #ffffff22; border: 3px solid #fff6; }
+.stick-base.on { bottom: auto; }
+.stick-knob { position: absolute; left: 35px; top: 35px; width: 50px; height: 50px; border-radius: 50%; background: #fffc; }
+.btns { position: absolute; right: 18px; bottom: 22px; width: 220px; height: 200px; }
+.btns button { position: absolute; pointer-events: auto; touch-action: none; border-radius: 50%; border: 3px solid #fff;
+  color: #fff; font-size: 28px; background: #0006; }
+.btns button.down { background: #fff6; }
+.b-attack { right: 0; bottom: 0; width: 100px; height: 100px; background: #b3202bcc !important; }
+.b-dash { right: 112px; bottom: 6px; width: 72px; height: 72px; }
+.b-heavy { right: 30px; bottom: 112px; width: 72px; height: 72px; }
+.mute { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); pointer-events: auto; font-size: 20px; background: #0006; color: #fff;
+  border: 2px solid #fff8; border-radius: 10px; padding: 4px 10px; cursor: pointer; }
