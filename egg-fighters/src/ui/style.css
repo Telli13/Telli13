@@ -1,0 +1,10 @@
+@font-face { font-family: 'Russo One'; font-style: normal; font-weight: 400; font-display: swap;
+  src: url(../../../art/fonts/russo-one-0.woff2) format('woff2'); unicode-range: U+0400-045F; }
+@font-face { font-family: 'Russo One'; font-style: normal; font-weight: 400; font-display: swap;
+  src: url(../../../art/fonts/russo-one-2.woff2) format('woff2'); unicode-range: U+0000-00FF, U+2000-206F; }
+
+html, body { margin: 0; height: 100%; overflow: hidden; background: #1b2840; color: #fff;
+  font-family: 'Russo One', 'Trebuchet MS', system-ui, sans-serif; user-select: none; -webkit-user-select: none; }
+#game { position: absolute; inset: 0; display: block; touch-action: none; }
+#loading { position: absolute; inset: 0; display: grid; place-items: center; font-size: 22px; }
+#ui { position: absolute; inset: 0; pointer-events: none; }
