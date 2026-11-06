@@ -1,5 +1,9 @@
 /* Boot: renderer, scene, arena, camera and the main loop.
- * URL options:  ?mode=showcase  — fighters only, camera orbits (?view=ninja|samurai, ?yaw=radians)
+ * URL options:
+ *   (none)            menu → pick a fighter → you vs CPU
+ *   ?mode=demo        CPU vs CPU, rounds repeat forever
+ *   ?p=ninja|samurai  skip the menu and fight as that egg
+ *   ?mode=showcase    fighters only, camera orbits (?view=ninja|samurai, ?yaw=radians)
  */
 'use strict';
 
@@ -63,11 +67,57 @@
     };
   }
 
-  const MODES = { showcase };
+  // ---- fight mode (Phase 2+): menu, you vs CPU, or CPU vs CPU demo ----
+  function fight() {
+    let match = null;
+    const begin = (choice) => {
+      if (match) match.destroy();
+      app.fx && app.fx.clearDebris();
+      const demo = choice === 'demo';
+      const me = demo ? EF.M.pick(['ninja', 'samurai']) : choice;
+      const other = me === 'ninja' ? 'samurai' : 'ninja';
+      match = new EF.Match(app, {
+        ids: [me, other],
+        controllers: demo ? ['cpu', 'cpu'] : ['player', 'cpu'],
+        onEnd(m) {
+          if (demo) { begin('demo'); return; }
+          const won = m.winner && m.winner.slot === 0;
+          EF.hud.result(won ? 'Победа!' : 'Поражение…', () => begin(choice), () => { match.destroy(); match = null; showMenu(); });
+        },
+      });
+      app.match = match;
+    };
+    const showMenu = () => EF.hud.menu(begin);
+    const p = params.get('p');
+    if (params.get('mode') === 'demo') begin('demo');
+    else if (p && EF.roster[p]) begin(p);
+    else showMenu();
+
+    const mute = document.createElement('button');
+    mute.className = 'mute';
+    mute.textContent = EF.audio.muted ? '🔇' : '🔊';
+    mute.addEventListener('click', () => { mute.textContent = EF.audio.toggle() ? '🔊' : '🔇'; });
+    document.getElementById('ui').appendChild(mute);
+
+    // idle camera while the menu is open
+    return {
+      update(dt) {
+        if (match) match.update(dt);
+        else {
+          camera.orbit = 0.15;
+          camera.update(dt, { x: -1, z: 0 }, { x: 1, z: 0 });
+          if (app.fx) app.fx.update(dt);
+        }
+        if (match) camera.orbit = 0;
+      },
+    };
+  }
+
+  const MODES = { showcase, fight, demo: fight };
   EF.registerMode = (name, fn) => { MODES[name] = fn; };
 
   function start() {
-    const name = params.get('mode') || EF.defaultMode || 'showcase';
+    const name = params.get('mode') || 'fight';
     app.mode = (MODES[name] || showcase)();
     document.getElementById('loading')?.remove();
     let last = performance.now();

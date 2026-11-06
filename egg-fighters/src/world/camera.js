@@ -32,10 +32,10 @@
         const axis = Math.atan2(dx, dz);
         let ideal = axis + Math.PI / 2;
         if (Math.abs(M.wrapAngle(ideal - this.yaw)) > Math.PI / 2) ideal += Math.PI;
-        this.yaw = M.dampAngle(this.yaw, ideal, 1.6, dt);
+        this.yaw = M.dampAngle(this.yaw, ideal, 2.6, dt);
       }
       if (this.orbit) this.yaw += this.orbit * dt;
-      const wantDist = M.clamp(6.2 + sep * 0.95, 7.2, 14);
+      const wantDist = M.clamp(4.8 + sep * 0.95, 6.2, 13);
       this.dist = M.damp(this.dist, wantDist, 3, dt);
       this.target.x = M.damp(this.target.x, mx, 6, dt);
       this.target.z = M.damp(this.target.z, mz, 6, dt);
@@ -47,9 +47,9 @@
       const tz = M.lerp(this.target.z, this.punchAt.z, p * 0.7);
       const dist = this.dist * (1 - 0.38 * p);
 
-      const h = 3.0 + dist * 0.12;
+      const h = 1.9 + dist * 0.1;
       this.cam.position.set(tx + Math.sin(this.yaw) * dist, h, tz + Math.cos(this.yaw) * dist);
-      const look = new THREE.Vector3(tx, 1.05, tz);
+      const look = new THREE.Vector3(tx, 1.0, tz);
       // shake
       this.shakeAmp = M.damp(this.shakeAmp, 0, 9, dt);
       if (this.shakeAmp > 0.002) {

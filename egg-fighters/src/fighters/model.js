@@ -107,9 +107,11 @@
       const upper = block(0.25, 0.34, 0.25, mat(c.sleeve), 0, -0.13, 0);
       const cuff = block(0.27, 0.08, 0.27, mat(c.cuff), 0, -0.32, 0);
       const fist = block(0.3, 0.27, 0.3, mat(c.fist, { roughness: 0.5 }), 0, -0.48, 0);
-      sh.add(upper, cuff, fist);
+      const inner = new THREE.Group();   // slides out of the shoulder for long punches
+      inner.add(upper, cuff, fist);
+      sh.add(inner);
       pivot.add(sh);
-      return { pivot: sh, fist };
+      return { pivot: sh, inner, fist };
     };
     const armL = makeArm(-1), armR = makeArm(1);
 
@@ -125,7 +127,7 @@
     };
     const legL = makeLeg(-1), legR = makeLeg(1);
 
-    const rig = { def, root, pivot, body, eggLayer, egg, face, eyes, armL, armR, legL, legR, costume: new THREE.Group() };
+    const rig = { def, root, pivot, body, eggLayer, egg, face, eyes, armL, armR, legL, legR, costume: new THREE.Group(), handWeapon: {}, backBlade: null };
     body.add(rig.costume);
     if (def.costume) EF.costumes[def.costume](rig, { mat, box: block });
     shadowed(rig.costume);

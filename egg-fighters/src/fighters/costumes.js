@@ -36,6 +36,15 @@
     return g;
   }
 
+  /** a blade held in the fist: the handle sits in the fist, the blade continues the arm */
+  function handBlade(k) {
+    const g = new THREE.Group();
+    k.position.y = -0.33;
+    g.add(k);
+    g.visible = false;
+    return g;
+  }
+
   const costumes = {
     ninja(rig, { mat, box }) {
       const C = rig.costume;
@@ -68,14 +77,19 @@
       scarfTail.rotation.set(0.35, -0.3, 0.25);
       C.add(scarfTail);
       // two katanas crossed on the back, handles over the shoulders
-      for (const s of [-1, 1]) {
+      const backBlades = [-1, 1].map((s) => {
         const k = katana(mat, box);
         k.position.set(s * 0.17, 0.12, -0.7);
         k.rotation.set(-0.15, 0, s * 0.62);
         C.add(k);
-      }
+        return k;
+      });
       // red wrist wraps and a belt stripe on the boots
-      for (const arm of [rig.armL, rig.armR]) arm.pivot.add(box(0.28, 0.06, 0.28, red, 0, -0.27, 0));
+      for (const arm of [rig.armL, rig.armR]) arm.inner.add(box(0.28, 0.06, 0.28, red, 0, -0.27, 0));
+      // the katana drawn for the heavy slash (hidden until used)
+      rig.handWeapon.katana = handBlade(katana(mat, box));
+      rig.armR.fist.add(rig.handWeapon.katana);
+      rig.backBlade = backBlades[1];
     },
 
     samurai(rig, { mat, box }) {
@@ -153,6 +167,10 @@
       saya.rotation.x = 0.25;
       saya.add(box(0.065, 0.065, 0.25, mat(0xece4d4), 0, 0, 0.58));
       C.add(saya);
+      const sword = katana(mat, box);
+      sword.children[1].material = mat(0xece4d4);
+      rig.handWeapon.sword = handBlade(sword);
+      rig.armR.fist.add(rig.handWeapon.sword);
     },
   };
 
