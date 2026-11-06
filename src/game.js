@@ -5,6 +5,7 @@
  * stock grows mushrooms on the surface through 6 stages.
  *
  * v2: levels, dangers (grubs, hedgehog, rabbit, squirrel), spore reproduction.
+ * v21: animals hunt by day, pests by night; day twice as long; faster, longer threads; slower chewing.
  * v20: mole, centipede and wasp from the third art pack; icon buttons.
  * v19: new art: day/night forest paintings, animation frames, fox/wolf/badger guests, the boar, spiders.
  * v18: synthesized music and sound effects, a narrated intro, 3D titles (src/audio.js).
@@ -42,8 +43,8 @@
   const ROOT_DY = 26;              // depth of a colony knot under its mushroom
 
   const STEP = 5;
-  const PLAYER_SPEED = 80;
-  const AUTO_SPEED = 40;
+  const PLAYER_SPEED = 160;
+  const AUTO_SPEED = 80;
   const MAX_PLAYER_TIPS = 4;
   const MAX_SLIDE = 0.8;
   const DRAIN_INTERVAL = 0.4;
@@ -56,7 +57,7 @@
   const CHILD_GOAL_STAGE = 2;     // a child counts for goals once it reaches this stage
   const SPROUT_DEPTH = 10;         // a thread this close to the grass line can sprout a child
   const GRUB_SAFE_DEPTH = 22;
-  const CHEW_TIME = 2.2;
+  const CHEW_TIME = 4.4;
   const TILE = 512;
   const STRIP = 2400;              // width of the painted soil strip that repeats along the grass line                // mycelium layer tile size (world px)
   const CAM_SPEED = 950;           // px / s for keyboard panning
@@ -646,7 +647,7 @@
       tip.nextBranch = rr(30, 90);
       if (rand() < (tip.player ? 0.75 : 0.35)) {
         const s = rand() < 0.5 ? 1 : -1;
-        addTip(tip.node, tip.angle + s * rr(0.5, 1.2), null, rr(18, tip.player ? 70 : 35), AUTO_SPEED, false);
+        addTip(tip.node, tip.angle + s * rr(0.5, 1.2), null, rr(36, tip.player ? 140 : 70), AUTO_SPEED, false);
       }
     }
   }
@@ -718,7 +719,7 @@
   function newColony(x, fromSpore) {
     const root = addNode(x, GROUND_Y + ROOT_DY, -1, 3.6);
     for (const a of [Math.PI / 2, Math.PI / 2 + 0.9, Math.PI / 2 - 0.9]) {
-      addTip(root, a, null, rr(35, 55), AUTO_SPEED, false);
+      addTip(root, a, null, rr(70, 110), AUTO_SPEED, false);
     }
     const m = { x, node: root, root, mother: null, stage: 0, prevStage: 0, anim: 1, born: state.t, spore: !!fromSpore };
     state.mushrooms.push(m);
@@ -1077,7 +1078,8 @@
       else updateBird(h, dt);
     }
     if (!state.L.attackEvery) return;
-    state.attackTimer -= dt * (0.7 + 1.3 * state.dark) * (hasMut('scent') ? 0.65 : 1); // hungrier at night
+    if (state.phase !== 'day') return; // animals sleep at night: they hunt only by day
+    state.attackTimer -= dt * (hasMut('scent') ? 0.65 : 1);
     if (state.attackTimer > 0) return;
     const free = state.hunters.filter((h) => h.threat && ['idle', 'away', 'return'].includes(h.state));
     const options = [];
@@ -1272,17 +1274,17 @@
       first: 'Личинка! Кликните по ней, пока она не перегрызла нить' },
     worm:      { name: 'Червяк', sprite: 'worm_long', scale: 0.45, speed: 34, chew: 0, hit: 50, hp: 1, faceRight: true, bit: 'Червяк порвал нить',
       first: 'Червяк роет ход и рвёт все нити на пути! Кликните по нему' },
-    woodlouse: { name: 'Мокрица', sprite: 'louse_1', frames: ['louse_1', 'louse_2'], ball: 'louse_ball', scale: 0.6, speed: 42, chew: 1.3, hit: 38, hp: 1, faceRight: true, bit: 'Мокрица объела кончик нити',
+    woodlouse: { name: 'Мокрица', sprite: 'louse_1', frames: ['louse_1', 'louse_2'], ball: 'louse_ball', scale: 0.6, speed: 42, chew: 2.6, hit: 38, hp: 1, faceRight: true, bit: 'Мокрица объела кончик нити',
       first: 'Мокрица объедает молодые кончики нитей! Кликните по ней' },
-    beetle:    { name: 'Жук', sprite: 'beetle_1', frames: ['beetle_1', 'beetle_2', 'beetle_3'], scale: 0.55, speed: 22, chew: 3.0, hit: 42, hp: 3, faceRight: true, bit: 'Жук перегрыз толстую нить',
+    beetle:    { name: 'Жук', sprite: 'beetle_1', frames: ['beetle_1', 'beetle_2', 'beetle_3'], scale: 0.55, speed: 22, chew: 6.0, hit: 42, hp: 3, faceRight: true, bit: 'Жук перегрыз толстую нить',
       first: 'Жук в панцире грызёт толстые нити! Кликните по нему 3 раза' },
-    shade:     { name: 'Тень-жук', sprite: 'beetle_1', frames: ['beetle_1', 'beetle_2', 'beetle_3'], shade: true, scale: 0.62, speed: 38, chew: 2.0, hit: 44, hp: 2, faceRight: true, bit: 'Тень-жук перегрыз нить',
+    shade:     { name: 'Тень-жук', sprite: 'beetle_1', frames: ['beetle_1', 'beetle_2', 'beetle_3'], shade: true, scale: 0.62, speed: 38, chew: 4.0, hit: 44, hp: 2, faceRight: true, bit: 'Тень-жук перегрыз нить',
       first: 'Ночью из глубины лезут тени-жуки! Кликните по такому дважды' },
-    spider:    { name: 'Паук', sprite: 'spider_1', frames: ['spider_1', 'spider_2', 'spider_3'], scale: 0.5, speed: 40, chew: 1.6, hit: 42, hp: 1, faceRight: true, bit: 'Паук порвал нить',
+    spider:    { name: 'Паук', sprite: 'spider_1', frames: ['spider_1', 'spider_2', 'spider_3'], scale: 0.5, speed: 40, chew: 3.2, hit: 42, hp: 1, faceRight: true, bit: 'Паук порвал нить',
       first: 'Ночью вылезают пауки и рвут нити! Кликните по пауку' },
     mole:      { name: 'Крот', sprite: 'mole_1', frames: ['mole_1', 'mole_2', 'mole_3', 'mole_4', 'mole_5'], scale: 1.0, speed: 40, chew: 0, hit: 56, hp: 2, faceRight: true, tunnels: 4, bit: 'Крот прорыл ход и порвал нить',
       first: 'Крот роет туннель и рвёт все нити на пути! Кликните по нему 2 раза' },
-    centipede: { name: 'Сколопендра', sprite: 'centipede_1', frames: ['centipede_1', 'centipede_2'], scale: 0.85, speed: 70, chew: 1.0, hit: 46, hp: 1, faceRight: true, bit: 'Сколопендра перекусила нить',
+    centipede: { name: 'Сколопендра', sprite: 'centipede_1', frames: ['centipede_1', 'centipede_2'], scale: 0.85, speed: 70, chew: 2.0, hit: 46, hp: 1, faceRight: true, bit: 'Сколопендра перекусила нить',
       first: 'Сколопендра! Быстрая и кусачая — кликните по ней поскорее' },
   };
 
@@ -1372,7 +1374,7 @@
   function updatePests(dt) {
     const P = state.L.pests;
     if (P) {
-      state.pestTimer -= dt * (0.6 + 2 * state.dark); // few by day, many at night
+      state.pestTimer -= state.phase === 'night' ? dt * 2.6 : 0; // the soil wakes up only at night
       if (state.pestTimer <= 0) {
         state.pestTimer = rr(P.every[0], P.every[1]);
         const cap = P.max + (state.dark > 0.5 ? 2 : 0);
@@ -1433,7 +1435,7 @@
     const { i, d } = nearestNode(head.x, head.y);
     if (i >= 0 && d < 12 && state.nodes[i].depth >= GRUB_SAFE_DEPTH) {
       biteAt(i, p.info);
-      p.cool = 1.0;
+      p.cool = 2.0;
       if (++p.bites >= (p.info.tunnels || 2)) { p.state = 'flee'; p.t = 0; p.dir = p.vx >= 0 ? 1 : -1; } // full: dives away
     }
   }
@@ -1452,7 +1454,7 @@
   function updateAnts(dt) {
     const A = state.L.ants;
     if (A) {
-      state.antTimer -= dt;
+      state.antTimer -= state.phase === 'night' ? dt : 0; // ants too
       if (state.antTimer <= 0) {
         state.antTimer = rr(A.every[0], A.every[1]);
         const prey = state.resources.filter((r) => !r.dead && r.fade >= 0 && r.amount > 0 &&
@@ -1478,7 +1480,7 @@
       if (!r || r.dead || !state.resources.includes(r)) { a.state = 'flee'; a.t = 0; a.dir = a.x < WW / 2 ? -1 : 1; continue; }
       const d = dist(a.x, a.y, r.x, r.y);
       if (a.state === 'seek') {
-        if (d < r.radius + 4) { a.state = 'grab'; a.grab = 1.8; continue; }
+        if (d < r.radius + 4) { a.state = 'grab'; a.grab = 3.6; continue; }
         const sp = 48 * dt;
         a.dir = r.x >= a.x ? 1 : -1;
         a.x += (r.x - a.x) / d * sp;
@@ -1876,6 +1878,19 @@
     ctx.restore();
   }
 
+  // a pest under the ground: a strong red glow and a pulsing ring around it
+  function pestMark(x, y, r, t) {
+    const k = 0.5 + 0.5 * Math.sin(t * 6);
+    glowDot(x, y, r * 1.9 + k * 10, '255,30,20', 0.55);
+    glowDot(x, y, r * 1.1, '255,70,40', 0.6);
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = `rgba(255,60,40,${0.55 + 0.35 * k})`;
+    ctx.beginPath(); ctx.arc(x, y, r * (1.05 + 0.15 * k), 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+  }
+
   function drawPests() {
     for (const g of state.pests) {
       if (!visibleX(g.x, 100)) continue;
@@ -1887,7 +1902,8 @@
       const im = info.shade ? tinted(fname, SHADE_FILTER) : img[fname], sc = info.scale;
       const wig = Math.sin(g.t * (chewing ? 18 : 6) + g.wig) * (chewing ? 0.08 : 0.05);
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
-      glowDot(g.x, g.y, info.hit + Math.sin(g.t * 6) * 5, '255,60,40', g.state === 'flee' ? 0.15 : 0.55);
+      if (g.state !== 'flee') pestMark(g.x, g.y, info.hit, g.t);
+      else glowDot(g.x, g.y, info.hit, '255,60,40', 0.15);
       if (g.hurt > 0) glowDot(g.x, g.y, 30, '255,255,255', g.hurt * 2);
       ctx.restore();
       ctx.save();
@@ -1922,7 +1938,8 @@
       if (!visibleX(a.x, 80)) continue;
       const im = img['ant_' + (1 + Math.floor(a.t * 10) % 3)], sc = 0.62;
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
-      glowDot(a.x, a.y, 36 + Math.sin(a.t * 7) * 4, '255,60,40', a.state === 'flee' ? 0.12 : 0.5);
+      if (a.state !== 'flee') pestMark(a.x, a.y, 40, a.t);
+      else glowDot(a.x, a.y, 36, '255,60,40', 0.12);
       ctx.restore();
       ctx.save();
       ctx.translate(a.x, a.y + Math.sin(a.t * 40) * 0.8);
@@ -1934,7 +1951,7 @@
         const li = img[resourceDef(a.loot.type, a.loot.big).s];
         drawSprite(ctx, li, a.x + a.dir * 12, a.y - 6, 24 / Math.max(li.width, li.height));
       }
-      if (a.state === 'grab') ring(a.x, a.y - 30, 11, 1 - a.grab / 1.8, '#ff6a50');
+      if (a.state === 'grab') ring(a.x, a.y - 30, 11, 1 - a.grab / 3.6, '#ff6a50');
     }
   }
 
@@ -3235,7 +3252,7 @@
   // as often, hunters attack more often and shade beetles crawl up from the deep;
   // at dawn the shades burrow back. The mycelium glows brighter in the dark.
   const DAYCYCLE = [
-    { key: 'day', len: 70 }, { key: 'dusk', len: 12 }, { key: 'night', len: 50 }, { key: 'dawn', len: 12 },
+    { key: 'day', len: 100 }, { key: 'dusk', len: 12 }, { key: 'night', len: 50 }, { key: 'dawn', len: 12 },
   ];
   const CYCLE = DAYCYCLE.reduce((s, p) => s + p.len, 0);
   let shadeCanvas = null;
@@ -3276,7 +3293,18 @@
       state.phase = d.key;
       msg(TXT.daynight[d.key], 3.5);
       if (d.key === 'dawn') snd('dawn'); else if (d.key === 'night') snd('night');
-      if (d.key === 'dawn') for (const p of state.pests) if (NIGHT_PESTS.includes(p.kind) && p.state !== 'flee') pestFlee(p);
+      if (d.key === 'dawn') { // morning: everything under the ground hides
+        for (const p of state.pests) if (p.state !== 'flee') pestFlee(p);
+        for (const a of state.ants) if (a.state !== 'flee' && a.state !== 'carry') { a.state = 'flee'; a.t = 0; }
+      }
+      if (d.key === 'dusk') { // evening: the animals go home
+        for (const h of state.hunters) {
+          if (!['approach', 'eat', 'swoop'].includes(h.state)) continue;
+          h.target = null;
+          h.state = h.ground ? 'return' : 'flee';
+        }
+        if (state.boar && state.boar.state !== 'leave' && state.boar.state !== 'sleep') boarLeave();
+      }
     }
     if (d.key === 'night') {
       state.shadeTimer -= dt;
@@ -3328,6 +3356,8 @@
       const fy = GROUND_Y - 30 - 70 * Math.abs(Math.sin(state.t * 0.6 + i));
       glowDot(fx, fy, 7, '200,255,120', 0.8 * dark * (0.4 + 0.6 * Math.abs(Math.sin(state.t * 3 + i))));
     }
+    for (const p of state.pests) if (p.state !== 'flee' && visibleX(p.x, 80)) pestMark(p.x, p.y, p.info.hit, p.t); // red marks stay bright at night
+    for (const a of state.ants) if (a.state !== 'flee' && visibleX(a.x, 80)) pestMark(a.x, a.y, 40, a.t);
     for (const p of state.pests) { // eyes in the dark
       if (p.state === 'flee' || !visibleX(p.x, 60) || (!NIGHT_PESTS.includes(p.kind) && dark < 0.4)) continue;
       const im = p.info.shade ? tinted(p.info.sprite, SHADE_FILTER) : img[p.info.sprite];
@@ -4047,7 +4077,7 @@
     const E = state.event;
     if (!E) {
       state.eventT -= dt;
-      if (state.eventT <= 0) { state.eventT = rr(EVENT_EVERY[0], EVENT_EVERY[1]); startEvent(pick(Object.keys(EVENTS))); }
+      if (state.eventT <= 0) { state.eventT = rr(EVENT_EVERY[0], EVENT_EVERY[1]); startEvent(pick(Object.keys(EVENTS).filter((k) => (k === 'swarm' ? state.phase === 'night' : k === 'boar' ? state.phase === 'day' : true)))); }
       return;
     }
     E.t += dt;
