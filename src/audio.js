@@ -118,6 +118,7 @@
     thunder: (t) => { noise(t, 2.4, { vol: 0.5, type: 'lowpass', freq: 400, sweep: 0.2, a: 0.02 }); noise(t + 0.05, 0.2, { vol: 0.25, type: 'highpass', freq: 2000 }); },
     gong: (t) => { [1, 2.76, 5.4].forEach((m, i) => tone(110 * m, t, 2.2 - i * 0.5, { vol: 0.12 / (i + 1), a: 0.01 })); },
     win: (t) => { [60, 64, 67, 72, 76, 79, 84].forEach((n, i) => tone(midi(n), t + i * 0.1, 0.7, { type: 'triangle', vol: 0.14 })); [60, 67, 72].forEach((n) => tone(midi(n), t + 0.75, 1.4, { type: 'sine', vol: 0.08, a: 0.05 })); },
+    buzz: (t, p) => { const o = tone(210, t, 0.9, { type: 'sawtooth', vol: 0.05, a: 0.05, filter: 1800, pan: p }); o.frequency.setValueAtTime(210, t); for (let i = 1; i < 9; i++) o.frequency.linearRampToValueAtTime(i % 2 ? 235 : 200, t + i * 0.1); },
     howl: (t, p) => { const o = tone(330, t, 1.6, { type: 'sawtooth', vol: 0.06, a: 0.4, filter: 900, pan: p }); o.frequency.linearRampToValueAtTime(520, t + 0.7); o.frequency.linearRampToValueAtTime(300, t + 1.9); },
     owl: (t, p) => { tone(midi(62), t, 0.35, { vol: 0.08, a: 0.06, slide: 0.94, pan: p }); tone(midi(59), t + 0.5, 0.6, { vol: 0.08, a: 0.06, slide: 0.92, pan: p }); },
     dawn: (t) => { for (let i = 0; i < 4; i++) chirp(t + i * 0.35, Math.random() * 1.6 - 0.8, 0.06, 2800 + Math.random() * 1200); },

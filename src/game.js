@@ -5,6 +5,7 @@
  * stock grows mushrooms on the surface through 6 stages.
  *
  * v2: levels, dangers (grubs, hedgehog, rabbit, squirrel), spore reproduction.
+ * v20: mole, centipede and wasp from the third art pack; icon buttons.
  * v19: new art: day/night forest paintings, animation frames, fox/wolf/badger guests, the boar, spiders.
  * v18: synthesized music and sound effects, a narrated intro, 3D titles (src/audio.js).
  * v17: forest events: a tree's request, drought, leaf fall, a swarm of pests.
@@ -83,6 +84,7 @@
     hedgehog: { name: 'Ёж',    scale: 0.27, speed: 60,  eat: 3.6, prey: [3, 6], verb: 'съел' },
     squirrel: { name: 'Белка', scale: 0.24, speed: 140, eat: 1.8, prey: [5, 6], verb: 'украла' },
     bird:     { name: 'Малиновка', scale: 0.22, speed: 300, eat: 2.4, prey: [1, 2], verb: 'склевала' },
+    wasp:     { name: 'Оса', scale: 0.8, speed: 380, eat: 2.0, prey: [1, 4], verb: 'изгрызла' },
     boar:     { name: 'Кабан', scale: 0.3, speed: 110, eat: 2.5, prey: [1, 6], verb: 'сожрал' },
   };
 
@@ -122,7 +124,7 @@
       seed: 44, ww: 13600, wh: 4000, rocks: 220, pools: 10, cap: 120,
       plan: { water: 56, organic: 56, mineral: 48, sugar: 40 },
       maxMushrooms: 9, hunters: ['rabbit'], attackEvery: [22, 30], neighbors: ['rival', 'parasite', 'rot'],
-      pests: { kinds: ['grub', 'worm', 'woodlouse'], every: [12, 18], max: 3 }, ants: { every: [16, 24], max: 2 }, par: 512,
+      pests: { kinds: ['grub', 'worm', 'woodlouse', 'centipede'], every: [12, 18], max: 3 }, ants: { every: [16, 24], max: 2 }, par: 512,
     },
     {
       name: 'Голодные звери',
@@ -130,8 +132,8 @@
       goal: { mushrooms: 7, ripeNow: 2 },
       seed: 55, ww: 16000, wh: 4250, rocks: 260, pools: 10, cap: 132,
       plan: { water: 64, organic: 56, mineral: 56, sugar: 48 },
-      maxMushrooms: 10, hunters: ['hedgehog', 'rabbit', 'bird'], attackEvery: [12, 18], neighbors: ['rival', 'kin', 'parasite'],
-      pests: { kinds: ['grub', 'worm', 'beetle'], every: [14, 20], max: 2 }, ants: null, par: 672,
+      maxMushrooms: 10, hunters: ['hedgehog', 'rabbit', 'bird', 'wasp'], attackEvery: [12, 18], neighbors: ['rival', 'kin', 'parasite'],
+      pests: { kinds: ['grub', 'worm', 'beetle', 'mole', 'centipede'], every: [14, 20], max: 2 }, ants: null, par: 672,
     },
     {
       name: 'Белка-воришка',
@@ -139,8 +141,8 @@
       goal: { ripeNow: 4, children: 3 },
       seed: 66, ww: 16000, wh: 4500, rocks: 340, pools: 10, cap: 108,
       plan: { water: 56, organic: 48, mineral: 48, sugar: 40 },
-      maxMushrooms: 10, hunters: ['hedgehog', 'rabbit', 'squirrel', 'bird'], attackEvery: [10, 15], neighbors: ['rival', 'rival', 'parasite', 'rot'],
-      pests: { kinds: ['grub', 'worm', 'woodlouse', 'beetle'], every: [10, 15], max: 3 }, ants: { every: [18, 26], max: 2 }, par: 800,
+      maxMushrooms: 10, hunters: ['hedgehog', 'rabbit', 'squirrel', 'bird', 'wasp'], attackEvery: [10, 15], neighbors: ['rival', 'rival', 'parasite', 'rot'],
+      pests: { kinds: ['grub', 'worm', 'woodlouse', 'beetle', 'mole', 'centipede'], every: [10, 15], max: 3 }, ants: { every: [18, 26], max: 2 }, par: 800,
     },
   ];
 
@@ -157,6 +159,8 @@
     'worm', 'woodlouse', 'grub', 'beetle', 'ant', 'log', 'leaf_pile', 'bg_day.jpg', 'bg_night.jpg',
   ];
   // the second art sheet (tools/cut_sheet2.py): animation frames, new animals and mushrooms
+  // the third pack (character-sprites.zip): mole, centipede, wasp and button icons
+  const SPRITES3 = ['mole_1', 'mole_2', 'mole_3', 'mole_4', 'mole_5', 'centipede_1', 'centipede_2', 'wasp_1', 'wasp_2', 'wasp_3', 'ui_play', 'ui_pause', 'ui_plus', 'ui_minus'];
   const SPRITES2 = ['rabbit_sit', 'rabbit_sit2', 'rabbit_crouch', 'rabbit_hop1', 'rabbit_hop2', 'rabbit_leap', 'rabbit_sleep', 'hedgehog_1', 'hedgehog_2', 'hedgehog_3', 'hedgehog_4', 'hedgehog_ball', 'squirrel_sit', 'squirrel_sit2', 'squirrel_stand', 'squirrel_run1', 'squirrel_run2', 'squirrel_eat', 'squirrel_eat2', 'robin_stand', 'robin_peck', 'robin_fly1', 'robin_fly2', 'robin_fly3', 'robin_stand2', 'fox_sit', 'fox_stand', 'fox_walk1', 'fox_walk2', 'fox_run', 'boar_1', 'boar_2', 'boar_3', 'boar_root', 'boar_puff', 'wolf_1', 'wolf_2', 'wolf_3', 'wolf_growl', 'badger_1', 'badger_2', 'badger_3', 'spider_1', 'spider_2', 'spider_3', 'ant_1', 'ant_2', 'ant_3', 'beetle_1', 'beetle_2', 'beetle_3', 'louse_1', 'louse_2', 'louse_ball', 'worm_long', 'worm_short', 'grub_1', 'grub_2', 'amanita_1', 'amanita_2', 'amanita_3', 'amanita_4', 'blue_1', 'blue_2', 'blue_3', 'purple_1', 'chant_1', 'chant_2', 'chant_3', 'chant_4', 'pink_cluster', 'bracket_stump', 'bolete', 'bolete_cluster'];
 
   // ---------------------------------------------------------------- helpers
@@ -185,7 +189,7 @@
       im.onerror = () => reject(new Error('Не удалось загрузить ' + dir + file));
       im.src = dir + file;
     });
-    return Promise.all([...SPRITES.map((n) => one('art/sprites/', n)), ...SPRITES2.map((n) => one('art/sprites2/', n))]).then(applyArt2);
+    return Promise.all([...SPRITES.map((n) => one('art/sprites/', n)), ...SPRITES2.map((n) => one('art/sprites2/', n)), ...SPRITES3.map((n) => one('art/sprites3/', n))]).then(applyArt2);
   }
 
   // switch the animals and pests to the new art (the frames have one shared scale per animal)
@@ -1031,9 +1035,10 @@
         state: 'idle', timer: rr(1, 3), target: null, eatT: 0, carrying: 0, hop: 0, walkT: 0,
       });
     }
-    if (L.hunters.includes('bird')) {
+    for (const kind of ['bird', 'wasp']) { // flyers
+      if (!L.hunters.includes(kind)) continue;
       state.hunters.push({
-        kind: 'bird', info: HUNTERS.bird, threat: true, ground: false,
+        kind, info: HUNTERS[kind], threat: true, ground: false,
         x: -300, y: 100, dir: 1, state: 'away', timer: 4, target: null, eatT: 0, walkT: 0,
       });
     }
@@ -1042,7 +1047,7 @@
   const preyFor = (h, m) => m.stage >= h.info.prey[0] && m.stage <= h.info.prey[1];
 
   function hunterBox(h) {
-    const im = img[h.ground ? h.kind : 'bluetit'];
+    const im = img[h.ground ? h.kind : h.kind === 'wasp' ? 'wasp_1' : 'bluetit'];
     const w = im.width * h.info.scale, hh = im.height * h.info.scale;
     if (!h.ground) return { x: h.x - w / 2, y: h.y - hh / 2, w, h: hh };
     return { x: h.x - w / 2, y: GROUND_Y + 12 + h.y - hh, w, h: hh };
@@ -1054,7 +1059,7 @@
     h.target = null;
     h.dir = h.x < cam.x + VW() / 2 ? -1 : 1;
     burst(h.x, h.ground ? GROUND_Y - 30 : h.y, '255,240,200', 8);
-    msg(h.info.name + (h.kind === 'bird' ? ' улетает!' : ' убегает!'), 1.6);
+    msg(h.info.name + (!h.ground ? ' улетает!' : ' убегает!'), 1.6);
   }
 
   function moveToward(a, tx, speed, dt) {
@@ -1098,8 +1103,8 @@
       h.x = m.x + (rand() < 0.5 ? -1 : 1) * 900;
       h.y = 60;
     }
-    snd(h.kind === 'bird' ? 'swoop' : 'alert', m.x);
-    msg(h.info.name + (h.kind === 'bird' ? ' летит к ' : ' идёт к ') + (m.mother ? 'грибу-ребёнку' : 'грибу') + '! Кликните, чтобы спугнуть', 3);
+    snd(h.kind === 'wasp' ? 'buzz' : !h.ground ? 'swoop' : 'alert', m.x);
+    msg(h.info.name + (!h.ground ? ' летит к ' : ' идёт к ') + (m.mother ? 'грибу-ребёнку' : 'грибу') + '! Кликните, чтобы спугнуть', 3);
   }
 
   function targetValid(h) {
@@ -1175,7 +1180,7 @@
     } else if (h.state === 'eat') {
       if (!targetValid(h)) { h.state = 'flee'; return; }
       h.eatT += dt;
-      if (h.eatT >= h.info.eat) { const m = h.target; h.target = null; h.state = 'flee'; loseMushroom(m, 'bird'); afterMeal(h, m); }
+      if (h.eatT >= h.info.eat) { const m = h.target; h.target = null; h.state = 'flee'; loseMushroom(m, h.kind); afterMeal(h, m); }
     } else if (h.state === 'flee') {
       h.x += h.dir * 380 * dt;
       h.y -= 200 * dt;
@@ -1275,6 +1280,10 @@
       first: 'Ночью из глубины лезут тени-жуки! Кликните по такому дважды' },
     spider:    { name: 'Паук', sprite: 'spider_1', frames: ['spider_1', 'spider_2', 'spider_3'], scale: 0.5, speed: 40, chew: 1.6, hit: 42, hp: 1, faceRight: true, bit: 'Паук порвал нить',
       first: 'Ночью вылезают пауки и рвут нити! Кликните по пауку' },
+    mole:      { name: 'Крот', sprite: 'mole_1', frames: ['mole_1', 'mole_2', 'mole_3', 'mole_4', 'mole_5'], scale: 1.0, speed: 40, chew: 0, hit: 56, hp: 2, faceRight: true, tunnels: 4, bit: 'Крот прорыл ход и порвал нить',
+      first: 'Крот роет туннель и рвёт все нити на пути! Кликните по нему 2 раза' },
+    centipede: { name: 'Сколопендра', sprite: 'centipede_1', frames: ['centipede_1', 'centipede_2'], scale: 0.85, speed: 70, chew: 1.0, hit: 46, hp: 1, faceRight: true, bit: 'Сколопендра перекусила нить',
+      first: 'Сколопендра! Быстрая и кусачая — кликните по ней поскорее' },
   };
 
   function spawnNear(x, y, minD, maxD) {
@@ -1329,7 +1338,7 @@
     if (!cands.length) return false;
     const n = state.nodes[pick(cands)];
     const p = { kind, info, x: 0, y: 0, dir: 1, state: 'seek', target: -1, t: 0, chew: 0, wig: rr(0, 6), hp: info.hp, bites: 0, hurt: 0, cool: 0 };
-    if (kind === 'worm') {
+    if (kind === 'worm' || kind === 'mole') {
       // comes in from the side and burrows straight through the target thread
       const side = rand() < 0.5 ? -1 : 1;
       p.x = clamp(n.x + side * rr(520, 700), 20, WW - 20);
@@ -1380,7 +1389,7 @@
         continue;
       }
       if (state.dark > 0.5 && nearGlow(p.x) && p.y < GROUND_Y + 900) { pestFlee(p); continue; } // the glow scares them off
-      if (p.kind === 'worm') { updateWorm(p, dt); continue; }
+      if (p.kind === 'worm' || p.kind === 'mole') { updateWorm(p, dt); continue; }
       if (p.state === 'pause') { p.chew -= dt; if (p.chew <= 0) { p.state = 'seek'; p.target = -1; } continue; }
       if (p.target < 0 || state.nodes[p.target].dead) p.target = pestTarget(p);
       if (p.target < 0) { pestFlee(p); continue; }
@@ -1425,7 +1434,7 @@
     if (i >= 0 && d < 12 && state.nodes[i].depth >= GRUB_SAFE_DEPTH) {
       biteAt(i, p.info);
       p.cool = 1.0;
-      if (++p.bites >= 2) { p.state = 'flee'; p.t = 0; p.dir = p.vx >= 0 ? 1 : -1; } // full: dives away
+      if (++p.bites >= (p.info.tunnels || 2)) { p.state = 'flee'; p.t = 0; p.dir = p.vx >= 0 ? 1 : -1; } // full: dives away
     }
   }
 
@@ -2018,7 +2027,11 @@
       }
     } else {
       const sc = h.info.scale;
-      if (h.state === 'eat') { // perched on the cap: pecking, with a small hop now and then
+      if (h.kind === 'wasp') { // a wasp: buzzing wings, a jittery hover
+        const im = img['wasp_' + (1 + Math.floor(state.t * 22) % 3)];
+        const jx = Math.sin(state.t * 31) * 2, jy = Math.sin(state.t * 23) * 3;
+        drawBody(im, h.x + jx, h.y + jy + im.height * sc / 2, sc, h.dir < 0, 1, 1, h.state === 'eat' ? 0.4 * (h.dir < 0 ? -1 : 1) : 0);
+      } else if (h.state === 'eat') { // perched on the cap: pecking, with a small hop now and then
         const im = Math.floor(state.t * 4) % 2 ? img.robin_peck : img.robin_stand;
         const hop = Math.max(0, Math.sin(state.t * 1.7)) > 0.96 ? 5 : 0;
         drawBody(im, h.x, h.y + img.robin_stand.height * sc / 2 - hop, sc, h.dir < 0);
@@ -2303,6 +2316,12 @@
   let hoverBtn = null;
   function button(x, y, w, h, label, onClick, opts = {}) {
     const hot = hoverBtn && hoverBtn.label === label && hoverBtn.x === x && hoverBtn.y === y;
+    if (opts.icon && img[opts.icon]) { // a painted round button: just the picture, a bit bigger when hovered
+      const ic = img[opts.icon], k = Math.min(w / ic.width, h / ic.height) * (hot ? 1.12 : 1.02);
+      ctx.drawImage(ic, x + w / 2 - ic.width * k / 2, y + h / 2 - ic.height * k / 2, ic.width * k, ic.height * k);
+      buttons.push({ x, y, w, h, label, onClick });
+      return;
+    }
     ctx.save();
     roundRect(x, y, w, h, Math.min(16, h / 2));
     const g = ctx.createLinearGradient(0, y, 0, y + h);
@@ -2314,7 +2333,8 @@
     ctx.strokeStyle = 'rgba(255,215,140,0.9)';
     ctx.stroke();
     ctx.restore();
-    text(label, x + w / 2, y + h / 2 + 1, opts.size || 20, '#fff3da', 'center');
+    if (opts.icon && img[opts.icon]) { const ic = img[opts.icon], k = Math.min((w - 8) / ic.width, (h - 6) / ic.height); ctx.drawImage(ic, x + w / 2 - ic.width * k / 2, y + h / 2 - ic.height * k / 2, ic.width * k, ic.height * k); }
+    else text(label, x + w / 2, y + h / 2 + 1, opts.size || 20, '#fff3da', 'center');
     buttons.push({ x, y, w, h, label, onClick });
   }
 
@@ -2429,7 +2449,7 @@
 
   function drawHud() {
     button(14, 14, 120, 44, '☰ Уровни', () => openMenu(), { size: 18 });
-    button(142, 14, 52, 44, mode === 'paused' ? '▶' : '❚❚', togglePause, { size: 18 });
+    button(142, 14, 52, 44, mode === 'paused' ? '▶' : '❚❚', togglePause, { size: 18, icon: mode === 'paused' ? 'ui_play' : 'ui_pause' });
     if (AUDIO) {
       button(200, 14, 52, 44, AUDIO.music ? '♪' : '♪̸', () => { AUDIO.unlock(); msg(AUDIO.toggleMusic() ? TXT.audio.musicOn : TXT.audio.musicOff, 1.6); }, { size: 22 });
       button(258, 14, 52, 44, AUDIO.sound ? '🔊' : '🔇', () => { AUDIO.unlock(); msg(AUDIO.toggleSound() ? TXT.audio.soundOn : TXT.audio.soundOff, 1.6); }, { size: 18 });
@@ -2510,8 +2530,8 @@
     drawMinimap();
     // zoom buttons beside the minimap (handy on a phone)
     const zr = mmRect(), zx = zr.x - 64;
-    button(zx, zr.y + zr.h - 104, 50, 46, '+', () => zoomAt(cam.z * 1.4), { size: 28 });
-    button(zx, zr.y + zr.h - 50, 50, 46, '−', () => zoomAt(cam.z / 1.4), { size: 28 });
+    button(zx, zr.y + zr.h - 104, 50, 46, '+', () => zoomAt(cam.z * 1.4), { size: 28, icon: 'ui_plus' });
+    button(zx, zr.y + zr.h - 50, 50, 46, '−', () => zoomAt(cam.z / 1.4), { size: 28, icon: 'ui_minus' });
     text(Math.round(cam.z * 100) + '%', zx + 25, zr.y + zr.h - 116, 13, 'rgba(247,232,198,0.85)', 'center', 600);
     drawThreatMarkers();
 
