@@ -13,9 +13,9 @@
     m = ML.layout.metrics(window.innerWidth, window.innerHeight);
     const s = document.documentElement.style;
     const px = {
-      'book-w': m.bookW, 'book-h': m.bookH, gap: m.gap, 'board-h': m.boardH, 'row-gap': m.rowGap,
-      'plaque-h': m.plaqueH, 'frame-pad': m.framePad, 'frame-b': m.border, 'footer-h': m.footerH,
-      'fav-h': m.favH, 'top-h': m.topH, 'hall-top': m.hallTop, 'nav-m': m.navM, 'unit-gap': m.unitGap, 'right-col': m.rightCol,
+      'book-w': m.bookW, 'book-h': m.bookH, gap: m.gap, 'board-h': m.boardH, 'plaque-h': m.plaqueH,
+      'plaque-band': m.plaqueBand, 'tier-h': m.tierH, 'sec-pad': m.secPad, 'pillar-w': m.pillarW,
+      'frame-side': m.frameSide, 'desk-h': m.deskH, 'controls-h': m.controlsH, 'top-pad': m.topPad, 'nav-m': m.navM,
       'spread-w': m.spreadW, 'spread-h': m.spreadH, 'entry-h': m.entryH,
     };
     for (const k in px) s.setProperty('--' + k, px[k] + 'px');
@@ -23,6 +23,23 @@
     document.body.classList.toggle('single', m.single);
     ML.book.setMetrics(m);
     return m;
+  }
+
+  // ---------- calm mode (dims effects for daily work) ----------
+  function initCalm() {
+    const btn = document.getElementById('calm-btn');
+    let on = false;
+    try { on = localStorage.getItem('ml-calm') === '1'; } catch (e) { /* ignore */ }
+    const set = v => {
+      on = v;
+      ML.fx.setCalm(on);
+      btn.setAttribute('aria-pressed', String(on));
+      btn.title = on ? T.calmOnTitle : T.calmOffTitle;
+      btn.innerHTML = `${icon(on ? 'moon' : 'flame')}<span>${esc(T.calm)}</span>`;
+      try { localStorage.setItem('ml-calm', on ? '1' : '0'); } catch (e) { /* ignore */ }
+    };
+    btn.addEventListener('click', () => { set(!on); btn.blur(); });
+    set(on);
   }
 
   // ---------- small UI helpers ----------
@@ -128,6 +145,8 @@
   // ---------- start ----------
   async function start() {
     ML.fx.init();
+    ML.scene.init();
+    ML.slots.init();
     ML.book.init();
     ML.search.init();
     ML.library.init(openBook);
@@ -137,15 +156,17 @@
     exitBtn.addEventListener('click', askExit);
     document.getElementById('hint').textContent = T.hint;
     initDemo();
+    initCalm();
 
     applyMetrics();
     await ML.library.load(m);
+    ML.fx.resetDust();
     warmup();
 
     let rt = 0;
     window.addEventListener('resize', () => {
       clearTimeout(rt);
-      rt = setTimeout(() => { applyMetrics(); ML.library.relayout(m); }, 150);
+      rt = setTimeout(() => { applyMetrics(); ML.library.relayout(m); ML.fx.resetDust(); }, 150);
     });
     document.addEventListener('keydown', onKey);
     document.body.classList.add('ready');

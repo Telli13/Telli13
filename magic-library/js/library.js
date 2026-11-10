@@ -1,11 +1,12 @@
-// The library: favorites shelf + bookcase walls. Only the visible wall exists
-// in the page at any time (the others are just data until you move there).
+// The big carved bookcase: Favorites tier on top (with the search scroll beside it),
+// then tiers of sections (Drive C, HDD 2TB…). Only the visible wall of tiers exists
+// in the page; other walls are only data until you move there.
 (function () {
   const ML = window.ML;
   const { icon, folderIcon, locationIcon, decor, esc, hash } = ML.art;
   const T = ML.T;
 
-  let m = null;
+  let m = null, pl = null, built = null;
   let shelves = [];      // [{ loc, folders }]
   let favorites = [];
   let walls = [];
@@ -15,6 +16,7 @@
   let moving = null;
   let summoned = null;
   let els = {};
+  let swiped = false;
 
   // ---- Book names: measured, never split inside a word ----
   // Try the normal size, then slightly smaller sizes. If a word still doesn't
@@ -74,48 +76,84 @@
     return { size, lines, cut: true };
   }
 
-  function bookHTML(item) {
+  // A book spine. side "sl" = left of the bookcase centre (its right side face shows), "sr" = right.
+  function bookHTML(item, side, tilt) {
     const h = hash(item.name);
     const f = fitName(item.name);
-    return `<button class="book c${h % ML.art.BOOK_COLORS} v${(h >> 4) % 3}" type="button" data-path="${esc(item.path)}" data-name="${esc(item.name)}"${f.cut ? ' data-cut="1"' : ''} aria-label="${esc(item.name)}">`
-      + `<span class="band"></span>${icon(folderIcon(item.name), 'book-ico')}`
+    return `<button class="book c${h % ML.art.BOOK_COLORS} v${(h >> 4) % 3} ${side}" style="--tilt:${tilt.toFixed(2)}" type="button"`
+      + ` data-slot="spine-${1 + (h >> 7) % 3}" data-path="${esc(item.path)}" data-name="${esc(item.name)}"${f.cut ? ' data-cut="1"' : ''} aria-label="${esc(item.name)}">`
+      + `<span class="spine-shade"></span><span class="band"></span>${icon(folderIcon(item.name), 'book-ico')}`
       + `<span class="book-name" style="font-size:${f.size}px">${f.lines.map(l => `<span>${esc(l)}</span>`).join('')}</span>`
       + `${icon('tree', 'book-emblem')}<span class="band b"></span></button>`;
   }
-  function slotHTML(s) {
-    return s.book ? bookHTML(s.book) : `<span class="decor d-${s.decor}">${decor(s.decor)}</span>`;
+
+  function plaqueHTML(loc, part, parts) {
+    const sub = parts > 1 ? `<small>${T.part(part + 1, parts)}</small>` : '';
+    return `<div class="plaque">${icon(locationIcon(loc.kind))}<span>${esc(loc.name)}</span>${sub}</div>`;
   }
-  function rowsHTML(slots, cols, rows) {
+
+  // One section = brass plate + a row of books/decor, placed at x inside the tier.
+  function sectionHTML(sec) {
     let h = '';
-    for (let r = 0; r < rows; r++) h += `<div class="row">${slots.slice(r * cols, (r + 1) * cols).map(slotHTML).join('')}</div>`;
+    sec.slots.forEach((s, i) => {
+      const x = sec.x + m.secPad + i * m.slot + m.bookW / 2;
+      const dx = (x - built.innerW / 2) / (built.innerW / 2);
+      if (s.book) h += bookHTML(s.book, dx < 0 ? 'sl' : 'sr', Math.min(1, Math.abs(dx)));
+      else if (s.more) h += `<span class="decor more">${T.more(s.more)}</span>`;
+      else h += `<span class="decor d-${s.decor}">${decor(s.decor)}</span>`;
+    });
+    return `<section class="sec${sec.loc.fav ? ' fav-sec' : ''}" style="left:${Math.round(sec.x)}px;width:${m.secW(sec.slots.length)}px">`
+      + plaqueHTML(sec.loc, sec.part, sec.parts) + `<div class="books">${h}</div></section>`;
+  }
+
+  function pillarsHTML(secs) {
+    let h = '';
+    for (let i = 0; i < secs.length - 1; i++) {
+      const end = secs[i].x + m.secW(secs[i].slots.length);
+      const mid = (end + secs[i + 1].x) / 2;
+      h += `<div class="pillar" data-slot="pillar" style="left:${Math.round(mid - m.pillarW / 2)}px"></div>`;
+    }
     return h;
   }
-  function unitHTML(u) {
-    const part = u.parts > 1 ? `<small>${T.part(u.part + 1, u.parts)}</small>` : '';
-    return `<section class="unit${u.loc.fav ? ' fav-unit' : ''}" style="width:${u.width}px">`
-      + `<div class="plaque">${icon(locationIcon(u.loc.kind))}<span>${esc(u.loc.name)}</span>${part}</div>`
-      + rowsHTML(u.slots, u.cols, u.rows) + '</section>';
+
+  function tierHTML(t, cls, extra) {
+    return `<div class="tier ${cls}"><div class="tier-shade"></div>${t.secs.map(sectionHTML).join('')}${pillarsHTML(t.secs)}${extra || ''}<div class="shelf" data-slot="shelf"></div></div>`;
   }
+
+  // Eye level is the middle of the bookcase: tiers above show the shelf's underside, below show its top.
+  function eyeClass(index, total) { return index < (total - 1) / 2 ? 'above' : 'below'; }
 
   function renderWall(i) {
     const el = document.createElement('div');
     el.className = 'wall';
-    el.innerHTML = walls[i] ? walls[i].units.map(unitHTML).join('') : '';
+    const w = walls[i];
+    const total = built.tiersShown + (m.compact ? 0 : 1);
+    el.innerHTML = w ? w.tiers.map((t, k) => tierHTML(t, eyeClass(k + (m.compact ? 0 : 1), total))).join('') : '';
     return el;
   }
 
-  function renderFavorites() {
-    els.fav.hidden = m.compact;
-    if (m.compact) { els.fav.innerHTML = ''; return; } // shown as the first bookcase instead
+  function favTierHTML() {
+    const favSlots = Math.max(1, m.slotsFit(built.innerW - m.searchW - m.pillarW));
     const n = favorites.length;
-    const cols = Math.max(1, Math.min(Math.max(n, 3), m.favMaxCols));
+    const cols = Math.max(1, Math.min(Math.max(n, 3), favSlots));
     const shown = n > cols ? favorites.slice(0, cols - 1) : favorites;
     const slots = shown.map(b => ({ book: b }));
     if (n > cols) slots.push({ more: n - shown.length });
     while (slots.length < cols) slots.push({ decor: ML.layout.pickDecor('fav', slots.length) });
-    els.fav.style.width = m.unitWidth(cols) + 'px';
-    els.fav.innerHTML = `<div class="plaque">${icon('star')}<span>${esc(T.favorites)}</span></div>`
-      + `<div class="row">${slots.map(s => s.more ? `<span class="decor more">${T.more(s.more)}</span>` : slotHTML(s)).join('')}</div>`;
+    const sec = { loc: { id: 'fav', name: T.favorites, kind: 'fav', fav: true }, part: 0, parts: 1, slots, x: 0 };
+    const alcoveX = m.secW(cols) + m.pillarW;
+    const t = { secs: [sec] };
+    const pillar = `<div class="pillar" data-slot="pillar" style="left:${m.secW(cols)}px"></div>`;
+    // Decor on both ends of the alcove when there is room beside the search scroll.
+    const alcoveW = built.innerW - alcoveX;
+    const room = Math.floor((alcoveW - Math.min(m.searchW, alcoveW - 16)) / 2 / m.slot);
+    const ends = room >= 1 ? `<div class="alcove-decor l">${decorRow(['candle', 'potion', 'stack'], room)}</div>`
+      + `<div class="alcove-decor r">${decorRow(['hourglass', 'candle', 'plant'], room)}</div>` : '';
+    return tierHTML(t, 'fav-tier above', pillar + `<div class="alcove" style="left:${alcoveX}px">${ends}</div>`);
+  }
+
+  function decorRow(names, n) {
+    return names.slice(0, Math.min(n, names.length)).map(d => `<span class="decor d-${d}">${decor(d)}</span>`).join('');
   }
 
   function updateNav() {
@@ -130,25 +168,25 @@
   function wallName(i) {
     const w = walls[i];
     if (!w) return '';
-    return [...new Set(w.units.map(u => u.loc.name))].join(' · ');
+    return [...new Set(w.tiers.flatMap(t => t.secs.map(s => s.loc.name)))].join(' · ');
   }
 
   async function goTo(i, opts = {}) {
     i = ML.layout.clamp(i, 0, walls.length - 1);
     if (moving) await moving;
     if (i === cur && wallEl && !opts.force) return;
-    const dir = i > cur ? 1 : -1;
     hidePlate();
+    const dir = i > cur ? 1 : -1;
     const next = renderWall(i);
     const old = wallEl;
-    els.walls.appendChild(next);
+    els.view.appendChild(next);
     wallEl = next;
     cur = i;
     updateNav();
     if (old && !opts.instant) {
-      const d = 360, easing = 'cubic-bezier(.4,0,.2,1)';
-      const a = old.animate([{ transform: 'translateX(0)', opacity: 1 }, { transform: `translateX(${-dir * 35}%)`, opacity: 0 }], { duration: d, easing });
-      const b = next.animate([{ transform: `translateX(${dir * 35}%)`, opacity: 0 }, { transform: 'translateX(0)', opacity: 1 }], { duration: d, easing });
+      const d = 380, easing = 'cubic-bezier(.4,0,.2,1)';
+      const a = old.animate([{ transform: 'translateX(0)', opacity: 1 }, { transform: `translateX(${-dir * 30}%)`, opacity: 0 }], { duration: d, easing });
+      const b = next.animate([{ transform: `translateX(${dir * 30}%)`, opacity: 0 }, { transform: 'translateX(0)', opacity: 1 }], { duration: d, easing });
       moving = Promise.all([a.finished, b.finished]).catch(() => {});
       await moving;
       moving = null;
@@ -157,8 +195,9 @@
   }
 
   function findBook(path) {
-    const sel = `.unit:not(.fav-unit) .book[data-path="${CSS.escape(path)}"]`;
-    return (wallEl && wallEl.querySelector(sel)) || els.fav.querySelector(`.book[data-path="${CSS.escape(path)}"]`);
+    const p = CSS.escape(path);
+    return (wallEl && wallEl.querySelector(`.sec:not(.fav-sec) .book[data-path="${p}"]`))
+      || els.hall.querySelector(`.book[data-path="${p}"]`);
   }
 
   // Make sure the book for a top-level folder is on screen; returns its element.
@@ -179,20 +218,64 @@
 
   function relayout(metrics) {
     m = metrics;
-    const firstPath = walls[cur] && walls[cur].units[0].slots.find(s => s.book);
+    const keep = walls[cur] && walls[cur].tiers[0] && walls[cur].tiers[0].secs.flatMap(s => s.slots).find(s => s.book);
     const favShelf = { loc: { id: 'fav', name: T.favorites, kind: 'fav', fav: true }, folders: favorites };
-    walls = ML.layout.build(m.compact && favorites.length ? [favShelf].concat(shelves) : shelves, m);
+    built = ML.layout.build(m.compact && favorites.length ? [favShelf].concat(shelves) : shelves, m, favorites.length);
+    walls = built.walls;
+    pl = ML.layout.place(m, built.innerW, built.tiersShown);
     wallOf = new Map();
-    walls.forEach((w, i) => w.units.forEach(u => {
-      if (!u.loc.fav) u.slots.forEach(s => { if (s.book) wallOf.set(s.book.path, i); });
-    }));
-    let target = firstPath ? (wallOf.get(firstPath.book.path) || 0) : 0;
+    walls.forEach((w, i) => w.tiers.forEach(t => t.secs.forEach(s => {
+      if (!s.loc.fav) s.slots.forEach(x => { if (x.book) wallOf.set(x.book.path, i); });
+    })));
+    let target = keep ? (wallOf.get(keep.book.path) || 0) : 0;
     if (target >= walls.length) target = 0;
-    if (wallEl) { wallEl.remove(); wallEl = null; }
+
+    // Bookcase skeleton: back, sides, crown, base, then the Favorites tier and the tier viewport.
+    const bc = els.bookcase;
+    Object.assign(bc.style, { left: pl.left + 'px', top: pl.top + 'px', width: pl.width + 'px', height: pl.height + 'px' });
+    bc.style.setProperty('--crown-h', m.crownH + 'px');
+    bc.style.setProperty('--base-h', pl.baseH + 'px');
+    bc.innerHTML = '<div class="bc-back" data-slot="bookcase-back"></div>'
+      + '<div class="bc-side l" data-slot="bookcase-side"></div><div class="bc-side r" data-slot="bookcase-side"></div>'
+      + `<div class="bc-crown" data-slot="bookcase-crown"><svg class="ph" viewBox="0 0 400 60" preserveAspectRatio="none" aria-hidden="true">${CROWN}</svg></div>`
+      + '<div class="bc-base" data-slot="bookcase-base"></div>'
+      + `<div class="bc-inner" style="width:${built.innerW}px">${m.compact ? '' : favTierHTML()}`
+      + `<div class="tiers-view" style="height:${built.tiersShown * m.tierH}px"></div></div>`
+      + '<div class="bc-light"></div>';
+    els.view = bc.querySelector('.tiers-view');
+
+    // Arrows beside the bookcase, centred on the tiers.
+    const midY = pl.tiersTop + built.tiersShown * m.tierH / 2;
+    Object.assign(els.left.style, { left: Math.max(2, pl.left - m.navM + 4) + 'px', top: midY + 'px' });
+    Object.assign(els.right.style, { left: Math.min(m.W - m.navM + 2, pl.left + pl.width + 4) + 'px', top: midY + 'px' });
+
+    // The search scroll: in the alcove next to Favorites (wide) or the top bar (compact).
+    const alcove = bc.querySelector('.alcove');
+    if (alcove) {
+      alcove.appendChild(els.search);
+      els.search.style.width = Math.min(m.searchW, built.innerW - parseFloat(alcove.style.left) - 16) + 'px';
+    } else {
+      els.top.appendChild(els.search);
+      els.search.style.width = '';
+    }
+
+    wallEl = null;
     cur = target;
-    renderFavorites();
+    ML.scene.layout(m, pl, els.hall);
     goTo(target, { instant: true, force: true });
   }
+
+  // Carved crown placeholder (stretches with the bookcase width).
+  const CROWN = `<defs>
+      <linearGradient id="cr-g" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#a0602e"/><stop offset=".3" stop-color="#6a3a1a"/><stop offset=".7" stop-color="#3e1f0c"/><stop offset="1" stop-color="#1e0e05"/></linearGradient>
+      <linearGradient id="cr-b" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#c88a4a"/><stop offset="1" stop-color="#5a2e12"/></linearGradient></defs>
+    <path d="M0 60V30Q0 22 6 22H150Q170 4 200 2Q230 4 250 22H394Q400 22 400 30V60Z" fill="url(#cr-g)"/>
+    <path d="M0 38H400" stroke="#1a0c05" stroke-width="3" opacity=".7"/><path d="M0 41H400" stroke="#c88a4a" stroke-width="1" opacity=".55"/>
+    <path d="M0 52H400" stroke="#1a0c05" stroke-width="2" opacity=".6"/>
+    <path d="M160 24Q200 -2 240 24" fill="none" stroke="url(#cr-b)" stroke-width="2"/>
+    <path d="M182 22c6-10 30-10 36 0-10 4-26 4-36 0z" fill="#c88a4a" opacity=".7"/><circle cx="200" cy="14" r="3" fill="#e0a860" opacity=".8"/>
+    <g fill="none" stroke="#c88a4a" stroke-width="1.4" opacity=".55"><path d="M150 30c-10 0-14 8-8 12s12-2 6-6M250 30c10 0 14 8 8 12s-12-2-6-6"/><path d="M20 30c-6 0-8 6-4 8M380 30c6 0 8 6 4 8"/></g>
+    <g fill="#c88a4a" opacity=".45"><circle cx="60" cy="46" r="2.4"/><circle cx="100" cy="46" r="2.4"/><circle cx="300" cy="46" r="2.4"/><circle cx="340" cy="46" r="2.4"/></g>`;
 
   async function load(metrics) {
     const locs = await ML.data.getLocations();
@@ -209,8 +292,10 @@
 
   function init(onBookClick) {
     els = {
-      fav: document.getElementById('favorites'),
-      walls: document.getElementById('walls'),
+      hall: document.getElementById('hall'),
+      bookcase: document.getElementById('bookcase'),
+      top: document.getElementById('top'),
+      search: document.getElementById('search'),
       left: document.querySelector('.nav-arrow.left'),
       right: document.querySelector('.nav-arrow.right'),
       dots: document.getElementById('wall-dots'),
@@ -224,20 +309,18 @@
     els.right.addEventListener('click', () => goTo(cur + 1));
     els.dots.addEventListener('click', e => { const d = e.target.closest('.dot'); if (d) goTo(+d.dataset.i); });
     // One click listener for all books (cheaper than one per book).
-    const onClick = e => {
+    els.bookcase.addEventListener('click', e => {
       if (swiped) { swiped = false; return; }
       const b = e.target.closest('.book');
       if (b) { hidePlate(); onBookClick({ type: 'folder', name: b.dataset.name, path: b.dataset.path }, b); }
-    };
-    els.walls.addEventListener('click', onClick);
-    els.fav.addEventListener('click', onClick);
+    });
 
     // Name plate with the full name, for books whose name had to be cut with "…".
     els.plate = document.createElement('div');
     els.plate.className = 'nameplate';
     els.plate.hidden = true;
     document.body.appendChild(els.plate);
-    const over = e => {
+    els.bookcase.addEventListener('pointerover', e => {
       const b = e.target.closest('.book[data-cut]');
       if (!b) return;
       const r = b.getBoundingClientRect();
@@ -246,14 +329,13 @@
       const w = els.plate.offsetWidth;
       els.plate.style.left = Math.max(8, Math.min(innerWidth - w - 8, r.left + r.width / 2 - w / 2)) + 'px';
       els.plate.style.top = Math.max(8, r.top - els.plate.offsetHeight - 10) + 'px';
-    };
-    const out = e => { if (e.target.closest('.book[data-cut]')) hidePlate(); };
-    for (const el of [els.walls, els.fav]) { el.addEventListener('pointerover', over); el.addEventListener('pointerout', out); }
+    });
+    els.bookcase.addEventListener('pointerout', e => { if (e.target.closest('.book[data-cut]')) hidePlate(); });
 
-    // Swipe left/right on touch screens to move between bookcases.
-    let sx = 0, sy = 0, swiped = false;
-    els.walls.addEventListener('pointerdown', e => { sx = e.clientX; sy = e.clientY; swiped = false; }, { passive: true });
-    els.walls.addEventListener('pointerup', e => {
+    // Swipe left/right on touch screens to move between walls of tiers.
+    let sx = 0, sy = 0;
+    els.bookcase.addEventListener('pointerdown', e => { sx = e.clientX; sy = e.clientY; swiped = false; }, { passive: true });
+    els.bookcase.addEventListener('pointerup', e => {
       const dx = e.clientX - sx, dy = e.clientY - sy;
       if (e.pointerType !== 'mouse' && Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
         swiped = true;
@@ -268,5 +350,6 @@
     init, load, relayout, goTo, reveal, summon, findBook,
     next: () => goTo(cur + 1),
     prev: () => goTo(cur - 1),
+    rect: () => pl,
   };
 })();

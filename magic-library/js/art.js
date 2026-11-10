@@ -41,6 +41,8 @@
     arrowR: '<path d="M9 5l7 7-7 7"/>',
     close: '<path d="M6 6l12 12M18 6L6 18"/>',
     key: '<circle cx="8" cy="12" r="4"/><path d="M12 12h9M18 12v3M21 12v2"/>',
+    moon: '<path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"/>',
+    flame: '<path d="M12 3c3 4 6 7 6 11a6 6 0 0 1-12 0c0-3 2-5 3-7 0 2 1 4 3 4 0-3-1-5 0-8z"/>',
     feather: '<path d="M20 4C12 4 6 9 5 19l2-2c2-6 6-9 10-10-3 2-6 5-7 9 5-1 9-6 10-12z"/><path d="M5 19l-1 1"/>',
     tree: '<path d="M12 21v-9"/><path d="M12 12c0-3-1.4-5-3.5-6.5M12 12c0-3 1.4-5 3.5-6.5M12 9V3.5"/><path d="M12 14c-1.8-1.6-4.2-1.8-6.5-1M12 14c1.8-1.6 4.2-1.8 6.5-1M12 17c-2-1-4.4-.8-6 .3M12 17c2-1 4.4-.8 6 .3"/><path d="M8.5 21h7"/>',
   };
@@ -105,13 +107,7 @@
 
   // Decor that fills empty shelf spots. viewBox 40×100 = the same shape as a book.
   const D = {
-    candle: `<ellipse cx="20" cy="66" rx="16" ry="16" fill="url(#g-halo)"/>
-      <ellipse cx="20" cy="97" rx="15" ry="3" fill="#2a1609"/>
-      <path d="M7 96h26l-3-5H10z" fill="url(#g-brass)"/>
-      <rect x="13" y="60" width="14" height="32" rx="2" fill="url(#g-wax)"/>
-      <path d="M13 63c2 0 2 6 4 6s1-6 3-6" fill="#f6ead0"/>
-      <path d="M20 60v-3" stroke="#2a1609" stroke-width="1"/>
-      <path class="flame" d="M20 44c3 5 5 8 3 12a3 3 0 0 1-6 0c-1.5-4 1-7 3-12z" fill="url(#g-flame)"/>`,
+    candle: '',
     globe: `<ellipse cx="20" cy="97" rx="14" ry="3" fill="#2a1609"/>
       <path d="M12 96h16l-3-4H15z" fill="#5a3820"/>
       <rect x="18.5" y="80" width="3" height="13" fill="url(#g-brass)"/>
@@ -146,8 +142,22 @@
   };
   const DECOR_NAMES = Object.keys(D);
 
+  // Candle body (no flame: the flame is drawn and animated by code above the wick).
+  // Shape 40×100 = same as the art slot "candle.png" (400×1000, wick tip at the top centre).
+  const CANDLE = `<path d="M20 0v7" stroke="#1a0c04" stroke-width="1.6"/>
+    <path d="M9 9q11-4 22 0v74H9z" fill="url(#g-wax)"/>
+    <path d="M9 9q11-4 22 0c0 5-2 7-3 12s-2 6-3 0-1-7-4-7-2 9-4 11-2-6-3-9-1-4-5-7z" fill="#fbf2dc"/>
+    <path d="M2 99h36l-3-8H5z" fill="url(#g-brass)"/><ellipse cx="20" cy="86" rx="16" ry="4" fill="url(#g-brass)"/>
+    <rect x="9" y="80" width="22" height="5" fill="#bba57a"/>`;
+  function candle(cls, style) {
+    return `<span class="candle${cls ? ' ' + cls : ''}" data-slot="candle"${style ? ` style="${style}"` : ''}>`
+      + `<svg class="ph" viewBox="0 0 40 100" preserveAspectRatio="none" aria-hidden="true">${CANDLE}</svg>`
+      + '<i class="candle-glow"></i><i class="flame-el"></i></span>';
+  }
+  // Shelf decor: an image slot (art/<name>.png) with a code-drawn placeholder inside.
   function decor(name) {
-    return `<svg viewBox="0 0 40 100" preserveAspectRatio="xMidYMax meet" class="decor-svg" aria-hidden="true">${D[name] || D.candle}</svg>`;
+    if (name === 'candle') return candle('on-shelf');
+    return `<span class="decor-img" data-slot="${name}"><svg viewBox="0 0 40 100" preserveAspectRatio="xMidYMax meet" class="decor-svg ph" aria-hidden="true">${D[name] || D.globe}</svg></span>`;
   }
 
   const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
@@ -159,5 +169,5 @@
     return h >>> 0;
   }
 
-  ML.art = { icon, folderIcon, fileIcon, locationIcon, decor, DECOR_NAMES, esc, hash, BOOK_COLORS: 8 };
+  ML.art = { icon, folderIcon, fileIcon, locationIcon, decor, candle, DECOR_NAMES, esc, hash, BOOK_COLORS: 8 };
 })();

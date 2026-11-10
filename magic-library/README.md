@@ -1,6 +1,7 @@
 # Magic Library Desktop — web prototype (Phase 1)
 
-A cozy magical library that shows your folders as books on bookcases.
+A cozy magical library that shows your folders as books on a big carved bookcase,
+in a 2.5D room: window light with floating dust, candles, a desk with an open book, cup and quill.
 This is the **browser prototype**. It uses **fake sample folders**, so nothing on your disk is read or changed.
 
 ## How to run it (no programming needed)
@@ -25,44 +26,58 @@ Nothing to install. It works offline.
 | Move between bookcases | Big arrows on the sides, the dots at the bottom, or **← →** |
 | Search spell | Click the search field, **or just start typing anywhere**. The best match glows on its shelf. Stop typing for about a second (or press **Enter**) and the book flies to you, opened at the right chapter. **↑ ↓** pick another result |
 | Exit | **Exit** button, top right. In the real app it returns to the normal Windows desktop |
+| Calm mode | **Calm** button at the bottom left: no parallax, no dust, slower candles, softer glow. It remembers your choice |
 | Try other amounts of folders | Bottom‑left **Sample library**: *Few folders* (small bookcases + decor), *Normal*, *Many folders* (several walls of bookcases) |
 
 ## Files (what is where)
 
 ```
 magic-library/
-  index.html          the page itself
-  css/style.css       all the looks: wood, books, pages, glow, animations
+  index.html          the page itself (scene layers + controls)
+  ART-PROMPTS.md      the list of pictures to generate, with sizes and ready prompts
+  art/                put generated pictures here (exact file names, see art/README.txt)
+  css/style.css       all the looks: room, bookcase, books, plates, candles, pages, animations
   js/texts.js         ALL words shown on screen (change or translate them here)
-  js/art.js           placeholder icons + decor (candles, globe, plant, hourglass, potion…)
+  js/art.js           placeholder icons + shelf decor (candles, globe, plant, hourglass, potion…)
+  js/art-slots.js     the list of swappable pictures; loads art/<file> when it exists
+  js/scene.js         the room around the bookcase: window, light beam, desk, armchair, globe, plant…
   js/data-fake.js     the fake folders (the only file that will be swapped for real disk access)
   js/platform.js      "talk to Windows" functions: exit, open a file (do nothing in the browser)
-  js/layout.js        math: book size, shelves per bookcase, how bookcases fill the screen
-  js/library.js       draws the favorites shelf and the bookcases
+  js/layout.js        math: book size, shelf tiers, where the bookcase stands, sections on tiers
+  js/library.js       draws the bookcase: Favorites tier + search, sections, brass plates, books
   js/book.js          the open book: pages, page turning, ribbons
   js/search.js        the search spell
-  js/effects.js       wand cursor + sparkles
-  js/app.js           starts everything, keyboard, Exit dialog
+  js/effects.js       wand cursor, sparkles, mouse parallax, window dust, calm mode, speed safety net
+  js/app.js           starts everything, keyboard, Exit dialog, Calm button
 ```
+
+## The scene in layers
+
+Back to front: **room** (wall + arched window) → **window light + dust** → **bookcase** → **desk and decor**
+(armchair, globe, plant, candles, open book, cup, quill) → **warm light and vignette**.
+When the mouse moves, the room shifts a little one way and the desk the other way, so the scene has depth.
+The bookcase itself stays still, so books never slide away from the wand.
 
 ## Built for speed
 
-* Only the **visible** bookcase wall exists on screen. Other walls are only data until you move to them.
-* An open book only draws its **two visible pages**, plus one turning page during the animation.
-* All animations are short (0.3–0.5 s, under 1 s even when steps are chained) and only move or fade things, which graphics cards do cheaply.
+* Only the **visible** wall of shelves exists on screen. Other walls are only data until you move there.
+* An open book only draws its **two visible pages** (one on phones), plus one turning page during the animation.
+* While a book is open, the room behind it stops moving (no parallax, no dust).
+* All page and book animations are short (0.3–0.5 s).
+* The always-on effects are cheap: only the small candle flames flicker; the glows are still pictures;
+  dust is ~50 soft dots drawn at half resolution, 30 times a second; parallax only runs while the mouse moves.
+* **Safety net:** if the computer can't keep up (under ~40 frames per second), parallax and dust switch off by
+  themselves. Calm mode does the same on purpose.
 * The wand is a normal system cursor image, so moving the mouse costs nothing.
-* One click listener serves all books, instead of one per book.
 * No downloaded fonts or libraries. Everything is local.
 
-## Replacing the art later
+## Replacing the art
 
-All text is drawn by code, so generated images must contain **no words**.
-
-* **Room background**: `body { background: … }` in `css/style.css` → e.g. `url(art/room.jpg) center / cover`.
-* **Book spines**: `.book` in `css/style.css`. Add a texture image to its `background` (keep `var(--bc)` for the color tint). The name, icon and emblem stay on top as code.
-* **Bookcase wood / shelves**: `.unit` (frame) and `.row::after` (shelf board).
-* **Decor**: the `D` list in `js/art.js`. Each item can become `<image href="art/candle.png" …>`.
-* **Book cover / pages**: `.cover .front`, `.paper-left`, `.paper-right` in `css/style.css`.
+Every picture is a **slot** with a fixed file name. Generate the pictures listed in **ART-PROMPTS.md**,
+save them into `art/` with exactly those names, and reload. No code changes are needed. Missing files keep the
+placeholder drawing. The bookcase is built from pieces (back, sides, crown, base, shelves, pillars, plates), so it
+still fits any number of folders and any screen size. Candle flames, tea steam and dust stay animated by code on
+top of the pictures. All words stay code-drawn, so pictures must contain no text.
 
 ## Later: turning it into a Windows app with Tauri (Phase 2)
 

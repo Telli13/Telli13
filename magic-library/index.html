@@ -42,8 +42,21 @@
   </svg>
 
   <div id="app">
+    <!-- The scene, back to front. Each layer moves a little with the mouse (parallax). -->
+    <div id="scene">
+      <div class="layer l-room"></div>
+      <div class="layer l-beam"></div>
+      <div class="layer" id="hall">
+        <div id="bookcase" class="bookcase"></div>
+        <button class="nav-arrow left" type="button" aria-label="Previous bookcase"></button>
+        <button class="nav-arrow right" type="button" aria-label="Next bookcase"></button>
+      </div>
+      <div class="layer l-front"></div>
+      <div class="light-falloff" aria-hidden="true"></div>
+    </div>
+
+    <!-- Controls that never move -->
     <header id="top">
-      <section id="favorites" class="unit fav-case" aria-label="Favorites"></section>
       <button id="exit-btn" class="exit-btn" type="button"></button>
       <div id="search" class="search-spell">
         <span class="search-ico"></span>
@@ -52,25 +65,20 @@
       </div>
     </header>
 
-    <main id="hall">
-      <button class="nav-arrow left" type="button" aria-label="Previous bookcase"></button>
-      <div id="walls"></div>
-      <button class="nav-arrow right" type="button" aria-label="Next bookcase"></button>
-    </main>
-
-    <footer id="desk">
-      <label class="demo">
-        <span id="demo-label"></span>
-        <select id="demo-select"></select>
-      </label>
+    <footer id="desk-ui">
+      <div class="desk-left">
+        <label class="demo">
+          <span id="demo-label"></span>
+          <select id="demo-select"></select>
+        </label>
+        <button id="calm-btn" class="calm-btn" type="button" aria-pressed="false"></button>
+      </div>
       <nav id="wall-nav">
         <div id="wall-dots"></div>
         <div id="wall-label"></div>
       </nav>
       <div id="hint" class="hint"></div>
     </footer>
-
-    <div class="vignette" aria-hidden="true"></div>
   </div>
 
   <div id="book-layer" hidden></div>
@@ -80,10 +88,12 @@
   <!-- Order matters: each file adds one part to window.ML -->
   <script src="js/texts.js"></script>
   <script src="js/art.js"></script>
+  <script src="js/art-slots.js"></script>
   <script src="js/platform.js"></script>
   <script src="js/data-fake.js"></script>
   <script src="js/layout.js"></script>
   <script src="js/effects.js"></script>
+  <script src="js/scene.js"></script>
   <script src="js/library.js"></script>
   <script src="js/book.js"></script>
   <script src="js/search.js"></script>

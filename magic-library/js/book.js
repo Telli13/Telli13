@@ -277,6 +277,7 @@
   async function open(item, sourceEl, opts = {}) {
     if (busy || st) return;
     busy = true;
+    ML.fx.pause(true);
     const chain = opts.chain && opts.chain.length ? opts.chain : [item];
     const listing = await ML.data.listFolder(item.path);
     st = { top: item, source: sourceEl, stack: [{ name: item.name, path: item.path }], spread: 0 };
@@ -367,6 +368,7 @@
     tome.className = 'tome' + (per === 1 ? ' single' : '') + (tightNow ? ' tight' : '');
     st = null;
     busy = false;
+    ML.fx.pause(false);
   }
 
   // ---------- input ----------
