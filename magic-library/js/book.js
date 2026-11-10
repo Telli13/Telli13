@@ -11,6 +11,9 @@
   let busy = false;
   let fit = { first: 8, per: 12 };
   let lastWheel = 0;
+  let per = 2;       // pages visible at once: 2 (open spread) or 1 (phones)
+  let swiped = false;
+  let tightNow = false;
 
   const EASE = 'cubic-bezier(.45,.05,.35,1)';
   const SKIM = '<div class="page-inner skim"></div>';
@@ -36,10 +39,17 @@
     s.setProperty('--page-pad-t', padT + 'px');
     s.setProperty('--page-pad-b', padB + 'px');
     s.setProperty('--chap-head-h', head + 'px');
+    per = m.single ? 1 : 2;
+    tightNow = m.tight;
+    if (tome) {
+      tome.classList.toggle('single', m.single);
+      tome.classList.toggle('tight', m.tight);
+    }
     if (st) { // re-paginate, keep the same first visible entry
-      const firstEntry = (st.chapter.pages[st.spread * 2] || { s: 0 }).s;
+      const firstEntry = (st.chapter.pages[st.spread * per] || { s: 0 }).s;
+      per = m.single ? 1 : 2;
       paginate(st.chapter);
-      st.spread = Math.floor(pageOf(firstEntry) / 2);
+      st.spread = Math.floor(pageOf(firstEntry) / per);
       renderSpread();
     }
   }
@@ -54,7 +64,9 @@
     const p = st.chapter.pages.findIndex(pg => entryIndex >= pg.s && entryIndex < pg.e);
     return p < 0 ? 0 : p;
   }
-  const spreads = () => Math.ceil(st.chapter.pages.length / 2);
+  const spreads = () => Math.ceil(st.chapter.pages.length / per);
+  const L = s => per === 2 ? s * 2 : -1;         // left page index of spread s
+  const R = s => per === 2 ? s * 2 + 1 : s;      // right (or only) page index
 
   function setChapter(item, listing, highlight) {
     const ch = {
@@ -67,7 +79,7 @@
     st.spread = 0;
     if (highlight) {
       const i = ch.entries.findIndex(e => e.name === highlight);
-      if (i >= 0) st.spread = Math.floor(pageOf(i) / 2);
+      if (i >= 0) st.spread = Math.floor(pageOf(i) / per);
     }
   }
 
@@ -82,6 +94,7 @@
   }
 
   function pageHTML(p) {
+    if (p < 0) return '';
     const ch = st.chapter, pg = ch.pages[p];
     if (!pg) {
       const fin = p === ch.pages.length ? `<div class="fin">❦ ${esc(T.theEnd)} ❦</div>` : '';
@@ -100,8 +113,8 @@
   }
 
   function renderSpread() {
-    leftEl.innerHTML = pageHTML(st.spread * 2);
-    rightEl.innerHTML = pageHTML(st.spread * 2 + 1);
+    leftEl.innerHTML = pageHTML(L(st.spread));
+    rightEl.innerHTML = pageHTML(R(st.spread));
     updateControls();
   }
   function updateControls() {
@@ -133,6 +146,16 @@
     leaf.className = 'leaf ' + (dir > 0 ? 'fwd' : 'bwd');
     leaf.innerHTML = `<div class="face front ${dir > 0 ? 'paper-right' : 'paper-left'}">${frontHTML}</div>`
       + `<div class="face back ${dir > 0 ? 'paper-left' : 'paper-right'}">${backHTML}</div>`;
+    if (per === 1) {
+      // One page at a time: the old page swings away to the left (forward),
+      // or the new page swings in from the left (back).
+      leaf.className = 'leaf solo';
+      leaf.innerHTML = `<div class="face front paper-right">${frontHTML}</div><div class="face back paper-left">${backHTML}</div>`;
+      leaf._kf = dir > 0
+        ? [{ transform: `translateZ(${z0}px) rotateY(0deg)`, opacity: 1 }, { opacity: 1, offset: 0.6 }, { transform: `translateZ(${z1}px) rotateY(-180deg)`, opacity: 0 }]
+        : [{ transform: `translateZ(${z0}px) rotateY(-180deg)`, opacity: 0 }, { opacity: 1, offset: 0.4 }, { transform: `translateZ(${z1}px) rotateY(0deg)`, opacity: 1 }];
+      return leaf;
+    }
     leaf._kf = [
       { transform: `translateZ(${z0}px) rotateY(0deg)` },
       { transform: `translateZ(${z1}px) rotateY(${dir > 0 ? -180 : 180}deg)` },
@@ -146,15 +169,28 @@
     const ns = st.spread + dir;
     if (ns < 0 || ns >= spreads()) return;
     busy = true;
-    const oldFront = dir > 0 ? rightEl.innerHTML : leftEl.innerHTML;
-    st.spread = ns;
-    const back = dir > 0 ? pageHTML(ns * 2) : pageHTML(ns * 2 + 1);
-    if (dir > 0) rightEl.innerHTML = pageHTML(ns * 2 + 1); else leftEl.innerHTML = pageHTML(ns * 2);
-    const leaf = makeLeaf(dir, oldFront, back, 1, 1);
-    pagesEl.appendChild(leaf);
-    updateControls();
-    try { await leaf.animate(leaf._kf, { duration: 460, easing: EASE }).finished; } catch (e) { /* cancelled */ }
-    if (dir > 0) leftEl.innerHTML = back; else rightEl.innerHTML = back;
+    let leaf;
+    if (per === 1) {
+      const oldHTML = rightEl.innerHTML;
+      st.spread = ns;
+      const nu = pageHTML(R(ns));
+      if (dir > 0) { rightEl.innerHTML = nu; leaf = makeLeaf(1, oldHTML, '', 1, 1); }
+      else leaf = makeLeaf(-1, nu, '', 1, 1);
+      pagesEl.appendChild(leaf);
+      updateControls();
+      try { await leaf.animate(leaf._kf, { duration: 420, easing: EASE }).finished; } catch (e) { /* cancelled */ }
+      rightEl.innerHTML = nu;
+    } else {
+      const oldFront = dir > 0 ? rightEl.innerHTML : leftEl.innerHTML;
+      st.spread = ns;
+      const back = dir > 0 ? pageHTML(L(ns)) : pageHTML(R(ns));
+      if (dir > 0) rightEl.innerHTML = pageHTML(R(ns)); else leftEl.innerHTML = pageHTML(L(ns));
+      leaf = makeLeaf(dir, oldFront, back, 1, 1);
+      pagesEl.appendChild(leaf);
+      updateControls();
+      try { await leaf.animate(leaf._kf, { duration: 460, easing: EASE }).finished; } catch (e) { /* cancelled */ }
+      if (dir > 0) leftEl.innerHTML = back; else rightEl.innerHTML = back;
+    }
     leaf.remove();
     busy = false;
     updateControls();
@@ -162,19 +198,32 @@
 
   // Quickly riffle several pages, then show a new chapter (or go back to an older one).
   async function riffle(dir, apply) {
-    const oldFront = dir > 0 ? rightEl.innerHTML : leftEl.innerHTML;
-    apply();
-    const finalBack = dir > 0 ? pageHTML(st.spread * 2) : pageHTML(st.spread * 2 + 1);
-    if (dir > 0) rightEl.innerHTML = pageHTML(st.spread * 2 + 1); else leftEl.innerHTML = pageHTML(st.spread * 2);
     const n = 3;
     const leaves = [];
-    for (let k = 0; k < n; k++) {
-      leaves.push(makeLeaf(dir, k === 0 ? oldFront : SKIM, k === n - 1 ? finalBack : SKIM, n - k, k + 1));
+    let finalBack, solo = null;
+    if (per === 1) {
+      const oldHTML = rightEl.innerHTML;
+      apply();
+      solo = pageHTML(R(st.spread));
+      for (let k = 0; k < n; k++) {
+        const front = dir > 0 ? (k === 0 ? oldHTML : SKIM) : (k === n - 1 ? solo : SKIM);
+        leaves.push(makeLeaf(dir, front, '', n - k, k + 1));
+      }
+      if (dir > 0) rightEl.innerHTML = solo;
+    } else {
+      const oldFront = dir > 0 ? rightEl.innerHTML : leftEl.innerHTML;
+      apply();
+      finalBack = dir > 0 ? pageHTML(L(st.spread)) : pageHTML(R(st.spread));
+      if (dir > 0) rightEl.innerHTML = pageHTML(R(st.spread)); else leftEl.innerHTML = pageHTML(L(st.spread));
+      for (let k = 0; k < n; k++) {
+        leaves.push(makeLeaf(dir, k === 0 ? oldFront : SKIM, k === n - 1 ? finalBack : SKIM, n - k, k + 1));
+      }
     }
     for (const l of leaves) pagesEl.appendChild(l);
     const anims = leaves.map((l, k) => l.animate(l._kf, { duration: 280, delay: k * 75, easing: EASE, fill: 'both' }));
     try { await Promise.all(anims.map(a => a.finished)); } catch (e) { /* cancelled */ }
-    if (dir > 0) leftEl.innerHTML = finalBack; else rightEl.innerHTML = finalBack;
+    if (solo != null) rightEl.innerHTML = solo;
+    else if (dir > 0) leftEl.innerHTML = finalBack; else rightEl.innerHTML = finalBack;
     leaves.forEach(l => l.remove());
   }
 
@@ -234,7 +283,7 @@
     setChapter(item, listing, chain.length === 1 ? opts.highlight : null);
 
     const colorCls = 'c' + (hash(item.name) % ML.art.BOOK_COLORS);
-    tome.className = 'tome closed ' + colorCls;
+    tome.className = 'tome closed ' + colorCls + (per === 1 ? ' single' : '') + (tightNow ? ' tight' : '');
     layer.hidden = false;
     renderSpread();
     renderRibbons(false);
@@ -265,7 +314,9 @@
     tome.classList.replace('closed', 'opening');
     board.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 360 });
     try {
-      await cover.animate([{ transform: 'rotateY(0deg)' }, { transform: 'rotateY(-180deg)' }],
+      await cover.animate(per === 1
+        ? [{ transform: 'rotateY(0deg)', opacity: 1 }, { opacity: 1, offset: 0.55 }, { transform: 'rotateY(-180deg)', opacity: 0 }]
+        : [{ transform: 'rotateY(0deg)' }, { transform: 'rotateY(-180deg)' }],
         { duration: 380, easing: 'cubic-bezier(.5,.1,.4,1)' }).finished;
     } catch (e) { /* cancelled */ }
     if (!st) return;
@@ -285,7 +336,9 @@
       cover.hidden = false;
       tome.classList.add('opening');
       try {
-        await cover.animate([{ transform: 'rotateY(-180deg)' }, { transform: 'rotateY(0deg)' }],
+        await cover.animate(per === 1
+          ? [{ transform: 'rotateY(-180deg)', opacity: 0 }, { opacity: 1, offset: 0.45 }, { transform: 'rotateY(0deg)', opacity: 1 }]
+          : [{ transform: 'rotateY(-180deg)' }, { transform: 'rotateY(0deg)' }],
           { duration: 300, easing: 'cubic-bezier(.5,.1,.4,1)' }).finished;
       } catch (e) { /* cancelled */ }
       cover.style.transform = 'none';
@@ -311,12 +364,14 @@
     pagesEl.querySelectorAll('.leaf').forEach(l => l.remove());
     layer.hidden = true;
     leftEl.innerHTML = rightEl.innerHTML = ribbonsEl.innerHTML = '';
-    tome.className = 'tome';
+    tome.className = 'tome' + (per === 1 ? ' single' : '') + (tightNow ? ' tight' : '');
     st = null;
     busy = false;
   }
 
   // ---------- input ----------
+  function swipeEaten() { const s = swiped; swiped = false; return s; }
+
   function onEntryClick(e) {
     const btn = e.target.closest('.entry');
     if (!btn) return false;
@@ -357,8 +412,24 @@
     closeBtn.addEventListener('click', () => close());
     prevBtn.addEventListener('click', () => flip(-1));
     nextBtn.addEventListener('click', () => flip(1));
-    leftEl.addEventListener('click', e => { if (!busy && !onEntryClick(e)) flip(-1); });
-    rightEl.addEventListener('click', e => { if (!busy && !onEntryClick(e)) flip(1); });
+    leftEl.addEventListener('click', e => { if (!swipeEaten() && !busy && !onEntryClick(e)) flip(-1); });
+    rightEl.addEventListener('click', e => {
+      if (swipeEaten() || busy || onEntryClick(e)) return;
+      if (per === 1) {
+        const r = rightEl.getBoundingClientRect();
+        flip(e.clientX < r.left + r.width / 3 ? -1 : 1);
+      } else flip(1);
+    });
+    // Swipe to turn pages on touch screens.
+    let sx = 0, sy = 0;
+    pagesEl.addEventListener('pointerdown', e => { sx = e.clientX; sy = e.clientY; swiped = false; }, { passive: true });
+    pagesEl.addEventListener('pointerup', e => {
+      const dx = e.clientX - sx, dy = e.clientY - sy;
+      if (e.pointerType !== 'mouse' && Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+        swiped = true;
+        flip(dx < 0 ? 1 : -1);
+      }
+    }, { passive: true });
     ribbonsEl.addEventListener('click', e => {
       const r = e.target.closest('.ribbon[data-i]');
       if (r) backTo(+r.dataset.i);

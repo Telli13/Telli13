@@ -16,16 +16,70 @@
   let summoned = null;
   let els = {};
 
+  // ---- Book names: measured, never split inside a word ----
+  // Try the normal size, then slightly smaller sizes. If a word still doesn't
+  // fit, cut it with "…" (the full name then shows on a name plate on hover).
+  let ctx = null, family = '';
+  const widths = new Map();
+  function textW(str, size) {
+    const k = size + '|' + str;
+    let w = widths.get(k);
+    if (w == null) {
+      if (!ctx) { ctx = document.createElement('canvas').getContext('2d'); family = getComputedStyle(document.body).fontFamily; }
+      ctx.font = `700 ${size}px ${family}`;
+      w = ctx.measureText(str).width;
+      widths.set(k, w);
+    }
+    return w;
+  }
+  // tokens: [{ t: text, sp: true if a space goes before it }]
+  function wrap(tokens, size, avail) {
+    const lines = [];
+    let line = '';
+    for (const { t, sp } of tokens) {
+      const cand = line ? line + (sp ? ' ' : '') + t : t;
+      if (!line || textW(cand, size) <= avail) line = cand;
+      else { lines.push(line); line = t; }
+    }
+    if (line) lines.push(line);
+    return lines;
+  }
+  function ellipsize(str, size, avail) {
+    while (str.length > 1 && textW(str + '…', size) > avail) str = str.slice(0, -1);
+    return str.trimEnd() + '…';
+  }
+  const MAX_LINES = 3;
+  function fitName(name) {
+    const avail = m.bookW * 0.86 - 2;
+    const base = ML.layout.clamp(m.bookW * 0.185, 11, 17);
+    const sizes = [1, 0.9, 0.8, 0.72].map(k => Math.max(9, Math.round(base * k * 2) / 2));
+    const words = name.split(/\s+/).filter(Boolean);
+    const byWord = words.map((t, i) => ({ t, sp: i > 0 }));
+    // Second choice: also allow a break between joined words, e.g. "Program|Data", "my-|notes".
+    const byPart = words.flatMap((w, i) => w.split(/(?<=[a-z])(?=[A-Z])|(?<=[-_.])/).map((t, j) => ({ t, sp: i > 0 && j === 0 })));
+    for (const tokens of [byWord, byPart]) {
+      for (const size of sizes) {
+        if (tokens.every(k => textW(k.t, size) <= avail)) {
+          const lines = wrap(tokens, size, avail);
+          if (lines.length <= MAX_LINES) return { size, lines, cut: false };
+        }
+      }
+    }
+    const size = sizes[sizes.length - 1];
+    let lines = wrap(byPart.map(k => textW(k.t, size) <= avail ? k : { t: ellipsize(k.t, size, avail), sp: k.sp }), size, avail);
+    if (lines.length > MAX_LINES) {
+      lines = lines.slice(0, MAX_LINES);
+      lines[MAX_LINES - 1] = ellipsize(lines[MAX_LINES - 1], size, avail);
+    }
+    return { size, lines, cut: true };
+  }
+
   function bookHTML(item) {
     const h = hash(item.name);
-    // Long words: allow a line break at "CamelCase" humps, and shrink the font if still long.
-    const parts = item.name.split(/\s+|(?<=[a-z])(?=[A-Z])|(?<=[-_.])/);
-    const longest = Math.max(...parts.map(w => w.length));
-    const fit = longest >= 11 ? ' n3' : longest >= 9 ? ' n2' : '';
-    const label = esc(item.name).replace(/([a-z])(?=[A-Z])|([-_.])/g, '$1$2<wbr>');
-    return `<button class="book c${h % ML.art.BOOK_COLORS} v${(h >> 4) % 3}${fit}" type="button" data-path="${esc(item.path)}" title="${esc(item.name)}">`
+    const f = fitName(item.name);
+    return `<button class="book c${h % ML.art.BOOK_COLORS} v${(h >> 4) % 3}" type="button" data-path="${esc(item.path)}" data-name="${esc(item.name)}"${f.cut ? ' data-cut="1"' : ''} aria-label="${esc(item.name)}">`
       + `<span class="band"></span>${icon(folderIcon(item.name), 'book-ico')}`
-      + `<span class="book-name">${label}</span>`
+      + `<span class="book-name" style="font-size:${f.size}px">${f.lines.map(l => `<span>${esc(l)}</span>`).join('')}</span>`
       + `${icon('tree', 'book-emblem')}<span class="band b"></span></button>`;
   }
   function slotHTML(s) {
@@ -38,7 +92,7 @@
   }
   function unitHTML(u) {
     const part = u.parts > 1 ? `<small>${T.part(u.part + 1, u.parts)}</small>` : '';
-    return `<section class="unit" style="width:${u.width}px">`
+    return `<section class="unit${u.loc.fav ? ' fav-unit' : ''}" style="width:${u.width}px">`
       + `<div class="plaque">${icon(locationIcon(u.loc.kind))}<span>${esc(u.loc.name)}</span>${part}</div>`
       + rowsHTML(u.slots, u.cols, u.rows) + '</section>';
   }
@@ -51,8 +105,10 @@
   }
 
   function renderFavorites() {
+    els.fav.hidden = m.compact;
+    if (m.compact) { els.fav.innerHTML = ''; return; } // shown as the first bookcase instead
     const n = favorites.length;
-    const cols = Math.max(3, Math.min(n, m.favMaxCols));
+    const cols = Math.max(1, Math.min(Math.max(n, 3), m.favMaxCols));
     const shown = n > cols ? favorites.slice(0, cols - 1) : favorites;
     const slots = shown.map(b => ({ book: b }));
     if (n > cols) slots.push({ more: n - shown.length });
@@ -82,6 +138,7 @@
     if (moving) await moving;
     if (i === cur && wallEl && !opts.force) return;
     const dir = i > cur ? 1 : -1;
+    hidePlate();
     const next = renderWall(i);
     const old = wallEl;
     els.walls.appendChild(next);
@@ -100,8 +157,8 @@
   }
 
   function findBook(path) {
-    const sel = `.book[data-path="${CSS.escape(path)}"]`;
-    return (wallEl && wallEl.querySelector(sel)) || els.fav.querySelector(sel);
+    const sel = `.unit:not(.fav-unit) .book[data-path="${CSS.escape(path)}"]`;
+    return (wallEl && wallEl.querySelector(sel)) || els.fav.querySelector(`.book[data-path="${CSS.escape(path)}"]`);
   }
 
   // Make sure the book for a top-level folder is on screen; returns its element.
@@ -123,9 +180,12 @@
   function relayout(metrics) {
     m = metrics;
     const firstPath = walls[cur] && walls[cur].units[0].slots.find(s => s.book);
-    walls = ML.layout.build(shelves, m);
+    const favShelf = { loc: { id: 'fav', name: T.favorites, kind: 'fav', fav: true }, folders: favorites };
+    walls = ML.layout.build(m.compact && favorites.length ? [favShelf].concat(shelves) : shelves, m);
     wallOf = new Map();
-    walls.forEach((w, i) => w.units.forEach(u => u.slots.forEach(s => { if (s.book) wallOf.set(s.book.path, i); })));
+    walls.forEach((w, i) => w.units.forEach(u => {
+      if (!u.loc.fav) u.slots.forEach(s => { if (s.book) wallOf.set(s.book.path, i); });
+    }));
     let target = firstPath ? (wallOf.get(firstPath.book.path) || 0) : 0;
     if (target >= walls.length) target = 0;
     if (wallEl) { wallEl.remove(); wallEl = null; }
@@ -165,12 +225,44 @@
     els.dots.addEventListener('click', e => { const d = e.target.closest('.dot'); if (d) goTo(+d.dataset.i); });
     // One click listener for all books (cheaper than one per book).
     const onClick = e => {
+      if (swiped) { swiped = false; return; }
       const b = e.target.closest('.book');
-      if (b) onBookClick({ type: 'folder', name: b.title, path: b.dataset.path }, b);
+      if (b) { hidePlate(); onBookClick({ type: 'folder', name: b.dataset.name, path: b.dataset.path }, b); }
     };
     els.walls.addEventListener('click', onClick);
     els.fav.addEventListener('click', onClick);
+
+    // Name plate with the full name, for books whose name had to be cut with "…".
+    els.plate = document.createElement('div');
+    els.plate.className = 'nameplate';
+    els.plate.hidden = true;
+    document.body.appendChild(els.plate);
+    const over = e => {
+      const b = e.target.closest('.book[data-cut]');
+      if (!b) return;
+      const r = b.getBoundingClientRect();
+      els.plate.textContent = b.dataset.name;
+      els.plate.hidden = false;
+      const w = els.plate.offsetWidth;
+      els.plate.style.left = Math.max(8, Math.min(innerWidth - w - 8, r.left + r.width / 2 - w / 2)) + 'px';
+      els.plate.style.top = Math.max(8, r.top - els.plate.offsetHeight - 10) + 'px';
+    };
+    const out = e => { if (e.target.closest('.book[data-cut]')) hidePlate(); };
+    for (const el of [els.walls, els.fav]) { el.addEventListener('pointerover', over); el.addEventListener('pointerout', out); }
+
+    // Swipe left/right on touch screens to move between bookcases.
+    let sx = 0, sy = 0, swiped = false;
+    els.walls.addEventListener('pointerdown', e => { sx = e.clientX; sy = e.clientY; swiped = false; }, { passive: true });
+    els.walls.addEventListener('pointerup', e => {
+      const dx = e.clientX - sx, dy = e.clientY - sy;
+      if (e.pointerType !== 'mouse' && Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+        swiped = true;
+        goTo(cur + (dx < 0 ? 1 : -1));
+      }
+    }, { passive: true });
   }
+
+  function hidePlate() { if (els.plate) els.plate.hidden = true; }
 
   ML.library = {
     init, load, relayout, goTo, reveal, summon, findBook,

@@ -4,49 +4,64 @@
   const ML = window.ML;
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
-  function compute(W, H, bookH) {
+  // compact = small/short screen: search gets its own top bar, and Favorites
+  // becomes the first bookcase on the wall instead of a separate top shelf.
+  function compute(W, H, bookH, compact) {
     const bookW = Math.round(bookH * 0.4);
     const gap = Math.max(4, Math.round(bookW * 0.08));
-    const boardH = Math.max(10, Math.round(bookH * 0.07));
+    const boardH = Math.max(8, Math.round(bookH * 0.07));
     const rowGap = Math.round(bookH * 0.07);
-    const plaqueH = Math.round(clamp(bookH * 0.19, 28, 40));
+    const plaqueH = Math.round(clamp(bookH * 0.19, 26, 40));
     const framePad = Math.round(bookW * 0.24);
-    const border = 9;
+    const border = W < 500 ? 7 : 9;
     const footerH = Math.round(clamp(H * 0.065, 44, 60));
-    const favH = border * 2 + plaqueH + 6 + bookH + boardH + 12;
-    const hallTop = favH + 6;
-    const hallH = H - hallTop - footerH;
-    const unitV = border * 2 + plaqueH + 6 + 16; // frame + plaque + breathing room
-    const rows = clamp(Math.floor((hallH - unitV + rowGap) / (bookH + boardH + rowGap)), 1, 4);
-    const navM = Math.round(clamp(W * 0.045, 44, 80));
-    const wallW = W - navM * 2;
-    const unitH = border * 2 + 2 * framePad;
     const slot = bookW + gap;
-    const maxCols = clamp(Math.floor((wallW - unitH + gap) / slot), 3, 12);
-    const rightCol = clamp(W * 0.26, 230, 360); // search + exit area
-    const favMaxCols = clamp(Math.floor((W - 48 - rightCol - unitH + gap) / slot), 2, 16);
+    const unitH = border * 2 + framePad * 2;
+    const topH = compact ? 64 : 0;                       // search bar row (compact only)
+    const rightCol = compact ? 0 : Math.round(clamp(W * 0.26, 240, 360));
+    // Favorites may only use the space left of the Exit/Search column (+ 24px breathing room).
+    const favMaxCols = compact ? 0 : Math.floor((W - 24 - 24 - rightCol - 24 - unitH + gap) / slot);
+    const favH = compact ? 0 : border * 2 + plaqueH + 6 + bookH + boardH + 12;
+    const hallTop = compact ? topH : favH + 6;
+    const hallH = H - hallTop - footerH;
+    const unitV = border * 2 + plaqueH + 6 + 30; // frame + plaque + crown + breathing room
+    const rows = clamp(Math.floor((hallH - unitV + rowGap) / (bookH + boardH + rowGap)), 0, 4);
+    const navM = Math.round(clamp(W * 0.045, 30, 80));
+    const wallW = W - navM * 2;
+    const maxCols = clamp(Math.floor((wallW - unitH + gap) / slot), 1, 12);
     const unitGap = Math.round(bookW * 0.45);
 
-    // Open book ("tome") size
-    const spreadW = Math.round(Math.min(W * 0.86, (H * 0.8) * 1.5, 1300));
-    const spreadH = Math.round(Math.min(H * 0.8, spreadW / 1.45));
-    const entryH = Math.round(clamp(spreadH / 17, 28, 42));
+    // Open book: one page at a time on narrow (phone) screens, two pages otherwise.
+    const single = W < 700;
+    let spreadW, spreadH;
+    if (single) {
+      spreadW = Math.round(Math.min(W - 40, 520));
+      spreadH = Math.round(Math.min(H - 170, spreadW * 1.55));
+    } else {
+      spreadW = Math.round(Math.min(W * 0.88, (H - 140) * 1.5, 1300));
+      spreadH = Math.round(Math.min(H * 0.8, H - 140, spreadW / 1.45));
+    }
+    const entryH = Math.round(clamp(spreadH / 17, 30, 42));
+    const pageW = single ? spreadW : spreadW / 2;
 
     return {
-      W, H, bookW, bookH, gap, boardH, rowGap, plaqueH, framePad, border, footerH, favH, hallTop, hallH,
-      rows, navM, wallW, maxCols, favMaxCols, unitGap, rightCol, spreadW, spreadH, entryH,
+      W, H, compact, bookW, bookH, gap, boardH, rowGap, plaqueH, framePad, border, footerH, topH, favH, hallTop, hallH,
+      rows, navM, wallW, maxCols, favMaxCols, unitGap, rightCol, single, spreadW, spreadH, entryH, tight: pageW < 330,
       unitWidth: cols => border * 2 + framePad * 2 + cols * bookW + (cols - 1) * gap,
     };
   }
 
   function metrics(W, H) {
-    let bookH = Math.round(clamp(H * 0.19, 118, 214));
-    let m = compute(W, H, bookH);
-    // Prefer at least two shelves per bookcase: shrink books a little if needed.
-    while (m.rows < 2 && bookH > 118) {
-      bookH = Math.max(118, Math.round(bookH * 0.92));
-      m = compute(W, H, bookH);
+    let compact = W < 760 || H < 600;
+    let bookH = Math.round(clamp(Math.min(H * 0.19, W * 0.4), 100, 214));
+    let m = compute(W, H, bookH, compact);
+    if (!compact && m.favMaxCols < 4) { compact = true; m = compute(W, H, bookH, compact); }
+    // Prefer two shelves per bookcase; on very short screens accept one, but it must fit.
+    while ((m.rows < 2 && bookH > 110) || (m.rows < 1 && bookH > 72)) {
+      bookH = Math.round(bookH * 0.92);
+      m = compute(W, H, bookH, compact);
     }
+    m.rows = Math.max(1, m.rows);
     return m;
   }
 
@@ -65,7 +80,7 @@
       const per = Math.ceil(n / parts);
       for (let p = 0; p < parts; p++) {
         const items = folders.slice(p * per, (p + 1) * per);
-        const cols = clamp(Math.ceil(Math.max(items.length, 1) / m.rows), 3, m.maxCols);
+        const cols = clamp(Math.ceil(Math.max(items.length, 1) / m.rows), Math.min(3, m.maxCols), m.maxCols);
         const slots = [];
         for (let i = 0; i < cols * m.rows; i++) {
           if (i < items.length) { slots.push({ book: items[i] }); continue; }

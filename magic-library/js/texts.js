@@ -11,6 +11,7 @@ ML.T = {
   hint: '← → move between bookcases · just start typing to cast a search',
   hintBook: '← → turn pages · Backspace: back one chapter · Esc: close the book',
   demoLabel: 'Sample library:',
+  demoLabelShort: 'Sample:',
   demo: { normal: 'Normal', few: 'Few folders', many: 'Many folders' },
   part: (i, n) => `${i} of ${n}`,
   chapter: n => `Chapter ${n}`,

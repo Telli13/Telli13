@@ -100,7 +100,7 @@
   function fileIcon(ext) { return FILE_MAP[(ext || '').toLowerCase()] || 'file'; }
 
   function locationIcon(kind) {
-    return { drive: 'drive', hdd: 'hdd', downloads: 'download', documents: 'doc', cloud: 'cloud' }[kind] || 'folder';
+    return { fav: 'star', drive: 'drive', hdd: 'hdd', downloads: 'download', documents: 'doc', cloud: 'cloud' }[kind] || 'folder';
   }
 
   // Decor that fills empty shelf spots. viewBox 40×100 = the same shape as a book.

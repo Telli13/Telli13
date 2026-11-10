@@ -15,10 +15,12 @@
     const px = {
       'book-w': m.bookW, 'book-h': m.bookH, gap: m.gap, 'board-h': m.boardH, 'row-gap': m.rowGap,
       'plaque-h': m.plaqueH, 'frame-pad': m.framePad, 'frame-b': m.border, 'footer-h': m.footerH,
-      'fav-h': m.favH, 'hall-top': m.hallTop, 'nav-m': m.navM, 'unit-gap': m.unitGap, 'right-col': m.rightCol,
+      'fav-h': m.favH, 'top-h': m.topH, 'hall-top': m.hallTop, 'nav-m': m.navM, 'unit-gap': m.unitGap, 'right-col': m.rightCol,
       'spread-w': m.spreadW, 'spread-h': m.spreadH, 'entry-h': m.entryH,
     };
     for (const k in px) s.setProperty('--' + k, px[k] + 'px');
+    document.body.classList.toggle('compact', m.compact);
+    document.body.classList.toggle('single', m.single);
     ML.book.setMetrics(m);
     return m;
   }
@@ -88,7 +90,8 @@
   // ---------- sample data switch ----------
   function initDemo() {
     const sel = document.getElementById('demo-select');
-    document.getElementById('demo-label').textContent = T.demoLabel;
+    document.getElementById('demo-label').innerHTML =
+      `<span class="long">${esc(T.demoLabel)}</span><span class="short">${esc(T.demoLabelShort)}</span>`;
     let saved = 'normal';
     try { saved = localStorage.getItem('ml-demo') || 'normal'; } catch (e) { /* ignore */ }
     ML.data.setScenario(saved);
