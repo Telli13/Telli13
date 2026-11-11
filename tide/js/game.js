@@ -58,9 +58,9 @@ const G = (() => {
   const zoneAt = r => r < D.ZONES[0].r1 ? 0 : r < D.ZONES[1].r1 ? 1 : r < D.ZONES[2].r1 ? 2 : 3;
 
   // ---------- сцена ----------
-  let renderer, scene, camera, sun, hemi, sky, wall, water, flame = [], fireLight, beam, sunBall;
+  let renderer, scene, camera, sun, hemi, sky, wall, water, flame = [], embers = [], coals, fireGlow, fireLight, beam, sunBall;
   let itemMat, rarMats, decorMat;
-  const colliders = [{ x: 0, z: 0, r: 3.9 }, { x: HP.x, z: HP.z, r: 2.5 }];
+  const colliders = [{ x: 0, z: 0, r: 3.9 }, { x: HP.x, z: HP.z, r: 2.6 }];
   const geo = {}, meshes = {}, inst = {};
   const cells = new Map();
   const specials = [], crabs = [], dyn = [], dead = [];
@@ -75,8 +75,8 @@ const G = (() => {
   function init() {
     calc();
     const cv = document.getElementById('cv');
-    renderer = new T.WebGLRenderer({ canvas: cv, antialias: !touch, powerPreference: 'high-performance' });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, S.opt.q ? 2 : 1.25));
+    renderer = new T.WebGLRenderer({ canvas: cv, antialias: true, powerPreference: 'high-performance' });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, S.opt.q ? 2 : 1.6));
     renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
     if (S.opt.q && !touch) { renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap; }
     scene = new T.Scene(); scene.fog = new T.Fog(0xf2d2a0, 25, 210);
@@ -87,9 +87,9 @@ const G = (() => {
       sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); const c = sun.shadow.camera;
       c.left = c.bottom = -38; c.right = c.top = 38; c.near = 1; c.far = 260; sun.shadow.bias = -.0004; sun.shadow.normalBias = .12; sun.shadow.radius = 3;
     }
-    itemMat = new T.MeshLambertMaterial({ vertexColors: true });
-    decorMat = new T.MeshLambertMaterial({ vertexColors: true });
-    rarMats = D.RAR.map(r => { const m = new T.MeshLambertMaterial({ vertexColors: true }); m.color.setRGB(...r.color); return m; });
+    const atlas = M.atlas(), mk = () => new T.MeshPhongMaterial({ vertexColors: true, map: atlas, shininess: 28, specular: 0x2a2a2a });
+    itemMat = mk(); decorMat = mk(); decorMat.shininess = 8; decorMat.specular.set(0x111111);
+    rarMats = D.RAR.map((r, i) => { const m = mk(); m.color.setRGB(...r.color); if (i) { m.shininess = 90; m.specular.set(i == 1 ? 0xffe9a0 : 0xd0a0ff); } return m; });
     buildSky(); buildTerrain(); buildLighthouse(); buildDecor(); buildItems(); buildSpecials(); buildFx(); buildHands();
     wallR = C.lit; syncCrabs();
     P.yaw = Math.atan2(-(HP.x - P.x), -(HP.z - P.z)) - .5;
@@ -118,28 +118,25 @@ const G = (() => {
     const r = rng(11), parts = [];
     for (let i = 0; i < 26; i++) {
       const a = r() * 6.283, d = 200 + r() * 320, s = 14 + r() * 26;
-      for (let k = 0; k < 3; k++) parts.push(M.P(M.ico(1, 0), 0xffffff,
+      for (let k = 0; k < 3; k++) parts.push(M.P(M.sph(1, 9, 6), 0xffffff,
         [Math.cos(a) * d + (k - 1) * s * .9, 70 + r() * 70 + (k == 1 ? s * .18 : 0), Math.sin(a) * d], [r() * 3, r() * 3, 0], [s * (k == 1 ? 1 : .7), s * .32, s * .6]));
     }
     const cl = new T.Mesh(M.merge(parts, false), new T.MeshBasicMaterial({ vertexColors: true, fog: false }));
     scene.add(cl); sky.userData.clouds = cl;
   }
   function buildTerrain() {
-    const N = S.opt.q ? 180 : 120, g = new T.PlaneGeometry(520, 520, N, N).toNonIndexed(); g.rotateX(-Math.PI / 2);
-    const p = g.attributes.position, c = new Float32Array(p.count * 3);
-    for (let i = 0; i < p.count; i++) p.setY(i, groundH(p.getX(i), p.getZ(i)));
+    const N = S.opt.q ? 180 : 120, g = new T.PlaneGeometry(520, 520, N, N); g.rotateX(-Math.PI / 2);
+    const p = g.attributes.position, c = new Float32Array(p.count * 3), uv = g.attributes.uv;
     const A = new T.Color(0xe9cf9a), B = new T.Color(0xb99a66), W = new T.Color(0x6e9a93), Dp = new T.Color(0x4f7a86);
-    for (let i = 0; i < p.count; i += 3) {
-      const x = (p.getX(i) + p.getX(i + 1) + p.getX(i + 2)) / 3, z = (p.getZ(i) + p.getZ(i + 1) + p.getZ(i + 2)) / 3, y = p.getY(i);
-      const r = Math.hypot(x, z);
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i), z = p.getZ(i), y = groundH(x, z), r = Math.hypot(x, z); p.setY(i, y);
       col.copy(A).lerp(B, noise(x * .08, z * .08));
       col.lerp(W, sstep(.2, -1.6, y + r * .028) * .7);          // сырые низины
       col.lerp(Dp, sstep(70, 160, r) * .45);                     // к бездне дно холоднее
-      const f = .92 + hash(i, 7) * .16;
-      for (let k = 0; k < 3; k++) { c[(i + k) * 3] = col.r * f; c[(i + k) * 3 + 1] = col.g * f; c[(i + k) * 3 + 2] = col.b * f; }
+      c[i * 3] = col.r; c[i * 3 + 1] = col.g; c[i * 3 + 2] = col.b; uv.setXY(i, x / 5, z / 5);
     }
     g.setAttribute('color', new T.BufferAttribute(c, 3)); g.computeVertexNormals();
-    const m = new T.Mesh(g, new T.MeshLambertMaterial({ vertexColors: true })); m.receiveShadow = true; scene.add(m);
+    const m = new T.Mesh(g, new T.MeshLambertMaterial({ vertexColors: true, map: M.sandTex() })); m.receiveShadow = true; scene.add(m);
     water = new T.Mesh(new T.CircleGeometry(520, 40), new T.MeshLambertMaterial({ color: 0x2fa7b0, transparent: true, opacity: .86 }));
     water.rotation.x = -Math.PI / 2; water.position.y = -30; water.visible = false; scene.add(water);
     // стена мглы
@@ -153,33 +150,63 @@ const G = (() => {
 
   // ---------- маяк и горн ----------
   function buildLighthouse() {
-    const parts = [], Pp = M.P;
-    parts.push(Pp(M.cyl(12, 12.6, 1.2, 18), 0xb9b09c, [0, .08, 0]));                      // пирс
-    for (let i = 0; i < 5; i++) parts.push(Pp(M.cyl(3.3 - i * .22, 3.52 - i * .22, 4.4, 10), i % 2 ? 0xd9482f : 0xf4efe2, [0, 2.8 + i * 4.4, 0]));
-    parts.push(Pp(M.cyl(3.4, 3.0, .5, 10), 0x4a4f58, [0, 22.9, 0]));                    // галерея
-    parts.push(Pp(M.cyl(1.7, 1.7, 2.6, 8, true), 0x3d4650, [0, 24.4, 0]));
-    parts.push(Pp(M.cone(2.4, 2.2, 8), 0xd9482f, [0, 26.8, 0]));
-    parts.push(Pp(M.box(1.3, 2.3, .3), 0x5a3d28, [0, 1.75, 3.45]));                     // дверь
-    // горн: чаша на постаменте
-    parts.push(Pp(M.cyl(1.7, 2.1, .7, 8), 0x8f8676, [HP.x, HP.y + .35, HP.z]));
-    parts.push(Pp(M.cyl(2.25, 1.5, 1.0, 9, true), 0xc98f3a, [HP.x, HP.y + 1.2, HP.z]));
-    parts.push(Pp(M.tor(2.25, .14, 4, 9), 0xe8b85a, [HP.x, HP.y + 1.7, HP.z], [Math.PI / 2, 0, 0]));
-    parts.push(Pp(M.cyl(1.5, 1.5, .1, 9), 0x3a2a1a, [HP.x, HP.y + .75, HP.z]));
+    const parts = [], Pp = M.P, W = M.WOOD, Mt = M.METAL;
+    parts.push(Pp(M.cyl(12, 12.6, 1.2, 28), 0xb9b09c, [0, .08, 0]));                     // пирс
+    for (let i = 0; i < 5; i++) parts.push(Pp(M.cyl(3.3 - i * .22, 3.52 - i * .22, 4.4, 24), i % 2 ? 0xd9482f : 0xf4efe2, [0, 2.8 + i * 4.4, 0]));
+    parts.push(Pp(M.cyl(3.5, 3.0, .5, 24), 0x4a4f58, [0, 22.9, 0], 0, 1, Mt));           // галерея
+    parts.push(Pp(M.tor(3.4, .06, 5, 24), 0x30343a, [0, 24, 0], [Math.PI / 2, 0, 0], 1, Mt));
+    for (let i = 0; i < 12; i++) parts.push(Pp(M.cyl(.04, .04, .9, 5), 0x30343a, [Math.cos(i * .5236) * 3.4, 23.55, Math.sin(i * .5236) * 3.4], 0, 1, Mt));
+    parts.push(Pp(M.cyl(1.7, 1.7, 2.6, 12, true), 0x3d4650, [0, 24.4, 0], 0, 1, Mt));
+    parts.push(Pp(M.cone(2.4, 2.2, 16), 0xd9482f, [0, 26.8, 0], 0, 1, Mt));
+    parts.push(Pp(M.sph(.3, 8, 6), 0xe8b85a, [0, 28, 0], 0, 1, Mt));
+    parts.push(Pp(M.box(1.3, 2.3, .3), 0x6a4830, [0, 1.75, 3.45], 0, 1, W));              // дверь
+    parts.push(Pp(M.cyl(.8, .8, .3, 12, false, Math.PI), 0x6a4830, [0, 2.9, 3.45], [Math.PI / 2, Math.PI / 2, 0], [1, 1, .8], W));
+    for (const y of [8, 13, 18]) parts.push(Pp(M.box(.7, 1.1, .3), 0x24343f, [0, y, 3.2 - y * .045]));
+    // горн: низкая широкая чаша — в огонь можно смотреть сверху
+    parts.push(Pp(M.cyl(1.5, 2.0, .5, 16), 0x8f8676, [HP.x, HP.y + .25, HP.z]));
+    parts.push(Pp(M.lathe([[0, .42], [1.2, .42], [1.95, .8], [2.25, 1.12], [2.4, 1.12], [2.15, .72], [1.3, .36], [0, .36]], 24), 0xc98f3a, [HP.x, HP.y, HP.z], 0, 1, Mt));
+    parts.push(Pp(M.tor(2.32, .09, 6, 24), 0xe8b85a, [HP.x, HP.y + 1.12, HP.z], [Math.PI / 2, 0, 0], 1, Mt));
+    for (let i = 0; i < 9; i++) { const a = i / 9 * 6.283 + .3, r = .35 + (i % 3) * .4;      // поленья и угли
+      parts.push(Pp(M.cyl(.12, .14, 1.1, 7), 0x2a1a10, [HP.x + Math.cos(a) * r, HP.y + .68 + (i % 2) * .12, HP.z + Math.sin(a) * r], [Math.PI / 2 + (i % 2 ? .1 : -.08), a + 1.2, 0], 1, W)); }
     const m = new T.Mesh(M.merge(parts), decorMat); m.castShadow = m.receiveShadow = true; scene.add(m);
-    const lamp = new T.Mesh(M.ico(1.3, 1), new T.MeshBasicMaterial({ color: 0xfff3c0, fog: false })); lamp.position.y = 24.4; scene.add(lamp);
+    coals = new T.Mesh(new T.CircleGeometry(1.5, 20), new T.MeshBasicMaterial({ map: M.coalTex(), fog: false, toneMapped: false }));
+    coals.rotation.x = -Math.PI / 2; coals.position.set(HP.x, HP.y + .56, HP.z); scene.add(coals);
+    const lamp = new T.Mesh(M.sph(1.3, 12, 8), new T.MeshBasicMaterial({ color: 0xfff3c0, fog: false })); lamp.position.y = 24.4; scene.add(lamp);
     beam = new T.Group(); beam.position.y = 24.4; scene.add(beam);
     const bm = new T.MeshBasicMaterial({ color: 0xfff0b8, transparent: true, opacity: .1, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide, fog: false });
-    for (const s of [1, -1]) { const b = new T.Mesh(new T.ConeGeometry(9, 170, 10, 1, true), bm); b.rotation.z = s * Math.PI / 2; b.position.x = s * 85; beam.add(b); }
+    for (const s of [1, -1]) { const b = new T.Mesh(new T.ConeGeometry(9, 170, 14, 1, true), bm); b.rotation.z = s * Math.PI / 2; b.position.x = s * 85; beam.add(b); }
     beam.userData.mat = bm;
-    // живой огонь
-    const fm = [0xfff0a0, 0xffc040, 0xff8a2a, 0x58e8d8];
-    for (let i = 0; i < 9; i++) {
-      const f = new T.Mesh(new T.ConeGeometry(.5 + (i % 3) * .16, 1.3 + (i % 4) * .4, 5),
-        new T.MeshBasicMaterial({ color: fm[i % 4], transparent: true, opacity: .92, fog: false, toneMapped: false }));
-      const a = i / 9 * 6.283, r = i ? .9 : 0; f.position.set(HP.x + Math.cos(a) * r, HP.y + 1.9, HP.z + Math.sin(a) * r);
-      f.userData = { ph: i * 1.7, h: 1 + (i % 4) * .22 }; scene.add(f); flame.push(f);
+    // живой огонь: языки пламени и искры из спрайтов
+    const ft = M.flameTex(), gt = glowTex();
+    const spr = (tex, norm) => { const sp = new T.Sprite(new T.SpriteMaterial({ map: tex, blending: norm ? T.NormalBlending : T.AdditiveBlending, depthWrite: false, transparent: true, fog: false, toneMapped: false })); sp.renderOrder = 6; scene.add(sp); return sp; };
+    for (let i = 0, n = S.opt.q ? 34 : 24; i < n; i++) {
+      const a = i * 2.39996, r = Math.sqrt(i / n) * 1.3, c = 1 - r / 1.3, sp = spr(ft, true); sp.center.set(.5, .06);
+      flame.push({ s: sp, x: Math.cos(a) * r, z: Math.sin(a) * r, h: 1.3 + c * 1.5 + Math.random() * .5, w: .85 + c * .5 + Math.random() * .3, ph: Math.random() * 6, sp: 5 + Math.random() * 5 });
     }
-    fireLight = new T.PointLight(0xffb060, 30, 26, 1.6); fireLight.position.set(HP.x, HP.y + 3, HP.z); scene.add(fireLight);
+    for (let i = 0; i < 22; i++) embers.push({ s: spr(gt), life: Math.random() * 2, max: 2, x: 0, z: 0, vy: 1, ph: Math.random() * 6 });
+    fireGlow = spr(gt); fireGlow.material.color.set(0xff8a30); fireGlow.material.color.set(0x3a1a05); fireGlow.position.set(HP.x, HP.y + 1.5, HP.z);
+    fireLight = new T.PointLight(0xffa050, 30, 28, 1.6); fireLight.position.set(HP.x, HP.y + 2, HP.z); scene.add(fireLight);
+  }
+  function updFire(dt) {
+    const pw = (.9 + S.lh * .04) * (1 + fireKick * .3);
+    for (const f of flame) {
+      const fl = .78 + .2 * Math.sin(time * f.sp + f.ph) + .12 * Math.sin(time * f.sp * 2.7 + f.ph * 2);
+      f.s.scale.set(f.w * pw * (.9 + .12 * Math.sin(time * f.sp * 1.3 + f.ph)), f.h * pw * fl, 1);
+      f.s.position.set(HP.x + f.x + Math.sin(time * 2.2 + f.ph) * .07, HP.y + .72, HP.z + f.z + Math.cos(time * 1.9 + f.ph) * .07);
+      f.s.material.opacity = .82 + .15 * Math.sin(time * f.sp * 1.7 + f.ph);
+    }
+    for (const e of embers) {
+      e.life -= dt;
+      if (e.life <= 0) { const a = Math.random() * 6.283, r = Math.random() * 1.2; e.x = Math.cos(a) * r; e.z = Math.sin(a) * r; e.max = e.life = 1.2 + Math.random() * 1.6; e.vy = 1.6 + Math.random() * 1.8; e.teal = Math.random() < .25; }
+      const k = 1 - e.life / e.max, t = e.max - e.life, o = (1 - k) * 1.2;
+      e.s.position.set(HP.x + e.x + Math.sin(time * 3 + e.ph) * .35 * k, HP.y + 1 + e.vy * t, HP.z + e.z + Math.cos(time * 2.3 + e.ph) * .35 * k);
+      e.s.scale.setScalar(.09 + .03 * Math.sin(time * 20 + e.ph));
+      if (e.teal) e.s.material.color.setRGB(.3 * o, 1 * o, .9 * o); else e.s.material.color.setRGB(1 * o, .55 * o, .12 * o);
+    }
+    const fl = .85 + .1 * Math.sin(time * 11) + .08 * Math.sin(time * 23.7);
+    coals.material.color.setScalar(.75 + fl * .35 + fireKick * .4); fireGlow.scale.setScalar(8 * pw * fl);
+    fireLight.intensity = (11 + S.lh * 1.5) * fl + fireKick * 25;
+    fireKick = Math.max(0, fireKick - dt * 2.5);
   }
 
   // ---------- декорации: корабли, киты, руины, скалы ----------
@@ -192,12 +219,12 @@ const G = (() => {
         const zz = p.getZ(i) / (len / 2), k = (1 - Math.pow(Math.abs(zz), 2.4) * .85) * (p.getY(i) < 0 ? .45 : 1);
         p.setX(i, p.getX(i) * k); if (p.getY(i) < 0) p.setY(i, p.getY(i) + Math.abs(zz) * 1.2);
       }
-      const roll = .32 + r() * .2;
-      parts.push(Pp(g, 0x6a4830, [x, y + 1.6, z], [0, rot, roll]));
-      parts.push(Pp(M.box(3.6, .2, len * .8), 0x9a7448, [x, y + 3.5, z], [0, rot, roll]));
+      g.computeVertexNormals(); const roll = .32 + r() * .2;
+      parts.push(Pp(g, 0x6a4830, [x, y + 1.6, z], [0, rot, roll], 1, M.WOOD));
+      parts.push(Pp(M.box(3.6, .2, len * .8), 0x9a7448, [x, y + 3.5, z], [0, rot, roll], 1, M.WOOD));
       for (const k of [-.25, .2]) {
         const mx = x + Math.sin(rot) * len * k, mz = z + Math.cos(rot) * len * k;
-        parts.push(Pp(M.cyl(.22, .3, 11, 5), 0x7d5a3a, [mx - 1.6, y + 7.5, mz], [0, 0, roll + .05]));
+        parts.push(Pp(M.cyl(.22, .3, 11, 8), 0x7d5a3a, [mx - 1.6, y + 7.5, mz], [0, 0, roll + .05], 1, M.WOOD));
         parts.push(Pp(M.box(5, .25, .25), 0x7d5a3a, [mx - 2.6, y + 10, mz], [0, rot + 1.57, roll]));
       }
       for (const k of [-.3, 0, .3]) colliders.push({ x: x + Math.sin(rot) * len * k, z: z + Math.cos(rot) * len * k, r: 2.6 });
@@ -208,26 +235,26 @@ const G = (() => {
       for (let i = 0; i < 11; i++) {
         const k = i / 10, px = x + Math.sin(rot) * (i * 2.6 - 13), pz = z + Math.cos(rot) * (i * 2.6 - 13), py = groundH(px, pz);
         const R = 4.6 * (1 - Math.pow(Math.abs(k - .35) * 1.3, 2));
-        if (R > .8) parts.push(Pp(M.tor(R, .22, 4, 9, Math.PI), 0xece4cf, [px, py - .2, pz], [0, rot, 0]));
-        parts.push(Pp(M.ico(.6, 0), 0xddd3ba, [px, py + Math.max(R, .5), pz]));
+        if (R > .8) parts.push(Pp(M.tor(R, .22, 6, 14, Math.PI), 0xece4cf, [px, py - .2, pz], [0, rot, 0]));
+        parts.push(Pp(M.sph(.6, 8, 6), 0xddd3ba, [px, py + Math.max(R, .5), pz]));
       }
       const hx = x + Math.sin(rot) * -17, hz = z + Math.cos(rot) * -17;
-      parts.push(Pp(M.ico(1, 1), 0xece4cf, [hx, groundH(hx, hz) + 1.6, hz], [0, rot, 0], [2.6, 1.8, 4.2]));
+      parts.push(Pp(M.sph(1, 12, 8), 0xece4cf, [hx, groundH(hx, hz) + 1.6, hz], [0, rot, 0], [2.6, 1.8, 4.2]));
       colliders.push({ x: hx, z: hz, r: 3 });
     }
     whale(1.2, 96, .4); whale(3.9, 100, 2.6); whale(5.4, 92, 4.4);
     for (let i = 0; i < 26; i++) {                                  // руины у бездны
       const a = r() * 6.283, d = 120 + r() * 34, [x, z] = at(a, d), y = groundH(x, z), h = 5 + r() * 9, fallen = r() < .25;
-      parts.push(Pp(M.cyl(.9, 1.05, h, 6), 0x7f9ea4, fallen ? [x, y + .8, z] : [x, y + h / 2 - .3, z], fallen ? [1.5, a, 0] : [r() * .12, 0, r() * .12]));
+      parts.push(Pp(M.cyl(.9, 1.05, h, 12), 0x7f9ea4, fallen ? [x, y + .8, z] : [x, y + h / 2 - .3, z], fallen ? [1.5, a, 0] : [r() * .12, 0, r() * .12]));
       if (!fallen) { parts.push(Pp(M.box(2.6, .7, 2.6), 0x94b0b4, [x, y + h - .2, z])); colliders.push({ x, z, r: 1.4 }); }
     }
     for (let i = 0; i < 4; i++) {                                    // арки
       const a = i * 1.57 + .6, [x, z] = at(a, 138), y = groundH(x, z);
-      parts.push(Pp(M.tor(7, 1.1, 5, 9, Math.PI), 0x6f9096, [x, y, z], [0, -a, 0]));
+      parts.push(Pp(M.tor(7, 1.1, 8, 16, Math.PI), 0x6f9096, [x, y, z], [0, -a, 0]));
     }
     for (let i = 0; i < 40; i++) {                                   // дальние скалы за мглой
       const a = i / 40 * 6.283 + r() * .1, d = 175 + r() * 110, [x, z] = at(a, d), h = 20 + r() * 60;
-      parts.push(Pp(M.cone(10 + r() * 16, h, 5), 0x6b6f86, [x, groundH(x, z) + h / 2 - 4, z], [0, r() * 6, r() * .2 - .1]));
+      parts.push(Pp(M.cone(10 + r() * 16, h, 9), 0x6b6f86, [x, groundH(x, z) + h / 2 - 4, z], [0, r() * 6, r() * .2 - .1]));
     }
     const m = new T.Mesh(M.merge(parts), decorMat); m.castShadow = m.receiveShadow = true; scene.add(m);
     // россыпь: камни, кораллы, водоросли
@@ -383,8 +410,8 @@ const G = (() => {
   }
   function buildHands() {
     heldMesh = new T.Mesh(geo.bottle, itemMat); heldMesh.visible = false; camera.add(heldMesh);
-    vacMesh = new T.Mesh(M.merge([M.P(M.cone(.16, .5, 7), 0xf3c3a2, [0, 0, 0], [Math.PI / 2, 0, 0]), M.P(M.cyl(.06, .09, .3, 6), 0xc98f3a, [0, 0, .35], [Math.PI / 2, 0, 0]),
-      M.P(M.tor(.16, .03, 4, 7), 0xe8b85a, [0, 0, -.25])]), decorMat);
+    vacMesh = new T.Mesh(M.merge([M.P(M.cone(.16, .5, 14), 0xf3c3a2, [0, 0, 0], [Math.PI / 2, 0, 0]), M.P(M.cyl(.06, .09, .3, 10), 0xc98f3a, [0, 0, .35], [Math.PI / 2, 0, 0]),
+      M.P(M.tor(.16, .03, 6, 14), 0xe8b85a, [0, 0, -.25])]), decorMat);
     vacMesh.position.set(.42, -.34, -.75); vacMesh.scale.setScalar(.6); vacMesh.visible = false; camera.add(vacMesh);
   }
 
@@ -394,7 +421,7 @@ const G = (() => {
     crabGeo = crabGeo || M.crab();
     while (crabs.length < C.crabN) {
       const m = new T.Mesh(crabGeo, decorMat); m.scale.setScalar(.6); m.castShadow = true; scene.add(m);
-      const cm = new T.Mesh(geo.bottle, itemMat); cm.position.y = 1.15; cm.visible = false; m.add(cm);
+      const cm = new T.Mesh(geo.bottle, itemMat); cm.position.y = 1.25; cm.visible = false; m.add(cm);
       const a = crabs.length * 2.4; crabs.push({ m, cm, x: HP.x + Math.cos(a) * 4, z: HP.z + Math.sin(a) * 4, st: 0, tg: null, carry: null, wait: Math.random() });
     }
   }
@@ -419,7 +446,7 @@ const G = (() => {
         if (!c.tg.alive) { c.tg.claimed = false; c.st = 0; c.wait = .3; continue; } tx = c.tg.x; tz = c.tg.z;
       } else { tx = HP.x; tz = HP.z; }
       const dx = tx - c.x, dz = tz - c.z, d = Math.hypot(dx, dz), sp = C.crabSp * dt;
-      if (d > (c.st === 1 ? .9 : 3.4)) {
+      if (d > (c.st === 1 ? .9 : 3.5)) {
         c.x += dx / d * sp; c.z += dz / d * sp;
         for (const o of colliders) { const ox = c.x - o.x, oz = c.z - o.z, od = Math.hypot(ox, oz); if (od < o.r + .5 && !(c.st === 2 && o.x === HP.x && o.z === HP.z)) { c.x = o.x + ox / od * (o.r + .5) + -oz / od * sp; c.z = o.z + oz / od * (o.r + .5) + ox / od * sp; } }
         c.m.rotation.y = Math.atan2(dx, dz) + Math.PI / 2;
@@ -439,7 +466,7 @@ const G = (() => {
     const m = new T.Mesh(geo[info.t], rarMats[info.rar]); m.position.set(x, y, z); m.castShadow = true; scene.add(m);
     const d = { m, info, from, vx: 0, vy: 0, vz: 0, mode: 'fly', far: 0 };
     if (vel) { d.vx = vel.x; d.vy = vel.y; d.vz = vel.z; }
-    else { const t = .55; d.vx = (HP.x - x) / t; d.vz = (HP.z - z) / t; d.vy = (HP.y + 1.9 - y + .5 * GRAV * t * t) / t; }
+    else { const t = .55; d.vx = (HP.x - x) / t; d.vz = (HP.z - z) / t; d.vy = (HP.y + 1.3 - y + .5 * GRAV * t * t) / t; }
     dyn.push(d); return d;
   }
   function updDyn(dt) {
@@ -452,7 +479,7 @@ const G = (() => {
       } else {
         d.vy -= GRAV * dt; p.x += d.vx * dt; p.y += d.vy * dt; p.z += d.vz * dt;
         const hd = Math.hypot(p.x - HP.x, p.z - HP.z);
-        if (hd < 2.1 && p.y < HP.y + 2.5 && p.y > HP.y) { burn(d); done = true; }
+        if (hd < 2.2 && p.y < HP.y + 1.9 && p.y > HP.y) { burn(d); done = true; }
         else if (p.y < groundH(p.x, p.z) + .3) {
           const r = Math.hypot(p.x, p.z);
           if (r < D.WORLD_R) addItem({ t: d.info.t, x: p.x, z: p.z, ry: Math.random() * 6, rx: 0, rz: 0, s: 1, rar: d.info.rar, zone: d.info.zone, home: false, tint: 1 });
@@ -481,8 +508,8 @@ const G = (() => {
       S.st.burned++; if (info.rar) S.st.goldBurned++;
       A.play('burn', combo.n);
     }
-    burst(p.x, HP.y + 2, p.z, d.from === 'crab' ? 5 : 12 + info.rar * 14, info.rar == 2 ? 0xc080ff : info.rar ? 0xffd040 : 0xffb060);
-    gain(v, { x: HP.x, y: HP.y + 3, z: HP.z }, tag, d.from === 'crab');
+    burst(p.x, HP.y + 1.4, p.z, d.from === 'crab' ? 5 : 12 + info.rar * 14, info.rar == 2 ? 0xc080ff : info.rar ? 0xffd040 : 0xffb060);
+    gain(v, { x: HP.x, y: HP.y + 2.6, z: HP.z }, tag, d.from === 'crab');
     fireKick = 1;
   }
   let fireKick = 0;
@@ -510,7 +537,7 @@ const G = (() => {
   function action(sx, sy) {                      // тап по миру или кнопка действия
     if (!running || ending) return;
     if (sx == null) ndc.set(0, 0); else ndc.set(sx / window.innerWidth * 2 - 1, -(sy / window.innerHeight) * 2 + 1);
-    ray.setFromCamera(ndc, camera); const o = ray.ray.origin, d = ray.ray.direction;
+    camera.updateMatrixWorld(); ray.setFromCamera(ndc, camera); const o = ray.ray.origin, d = ray.ray.direction;
     const hit = pickAt(o, d, C.reach);
     if (hit && hit.sp) { takeSpecial(hit.sp); return; }
     if (P.held) {                                 // с находкой в руках: целишься в горн — бросок
@@ -541,7 +568,7 @@ const G = (() => {
     const aim = (d.x * dx + d.z * dz) / (dist * Math.hypot(d.x, d.z) || 1);
     if (aim > .93 && dist < C.throwV * C.throwV / GRAV * .95 && dist > 1) {     // помощь в прицеливании
       const t = Math.max(.35, dist / (C.throwV * .8)), y0 = o.y - .3;
-      vel = new V3(dx / t, (HP.y + 1.9 - y0 + .5 * GRAV * t * t) / t, dz / t);
+      vel = new V3(dx / t, (HP.y + 1.3 - y0 + .5 * GRAV * t * t) / t, dz / t);
     } else vel = new V3(d.x * C.throwV, d.y * C.throwV + 2.5, d.z * C.throwV);
     const dd = launch(P.held, o.x + d.x * .6, o.y - .3, o.z + d.z * .6, 'hand', vel); dd.far = dist;
     P.held = null; showHeld(); A.play('throw');
@@ -698,8 +725,7 @@ const G = (() => {
       const a = ending * .08 + 1; camera.position.set(Math.cos(a) * 9, 27 + ending * .15, Math.sin(a) * 9); camera.rotation.set(-.32, Math.atan2(Math.cos(a), Math.sin(a)) + 0, 0);
       camera.rotation.y = Math.atan2(camera.position.x, camera.position.z); wallR += dt * 30; scene.fog.far = 210 + ending * 20;
     }
-    for (const f of flame) { const s = (1 + .25 * Math.sin(time * 9 + f.userData.ph)) * (1 + fireKick * .5) * (.8 + S.lh * .06); f.scale.set(1, s * f.userData.h, 1); f.position.y = HP.y + 1.4 + s * f.userData.h * .8; f.rotation.y += dt * 2; }
-    fireKick = Math.max(0, fireKick - dt * 2.5); fireLight.intensity = 26 + Math.sin(time * 13) * 5 + fireKick * 40;
+    updFire(dt);
     beam.rotation.y += dt * .35;
     wallR = ending ? wallR : lerp(wallR, C.lit + 1.5, Math.min(1, dt * 1.2)); wall.scale.set(wallR, 1, wallR);
     updFx(dt); updDyn(dt); updSky();
@@ -763,6 +789,6 @@ const G = (() => {
     init, get S() { return S; }, C, P, input, buy, kindle, canSee, action, goHome, save, rebirth, wipe, calc, senseTarget, lookInfo, touch,
     start() { running = true; A.unlock(); A.set(S.opt.snd); }, get running() { return running; }, get rate() { return rate; }, get combo() { return combo; },
     get ending() { return ending; }, project(p) { tv.set(p.x, p.y, p.z).project(camera); return tv.z > 1 ? null : { x: (tv.x + 1) / 2 * window.innerWidth, y: (1 - tv.y) / 2 * window.innerHeight }; },
-    HP, _dbg: { inst, specials, crabs, dyn, takeSpecial, sim(n, dt) { for (let i = 0; i < n; i++) { time += dt; step(dt); updDyn(dt); } }, get camera() { return camera; }, get ev() { return ev; } }
+    HP, _dbg: { inst, specials, crabs, dyn, takeSpecial, sim(n, dt) { for (let i = 0; i < n; i++) { time += dt; step(dt); updDyn(dt); updFire(dt); } }, get camera() { return camera; }, get ev() { return ev; } }
   };
 })();
