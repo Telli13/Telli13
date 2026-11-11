@@ -112,6 +112,8 @@ const M = (() => {
   const star = () => merge([P(new T.OctahedronGeometry(.5), 0xfff0a0, 0, 0, [.55, 1.3, .55]),
     P(new T.OctahedronGeometry(.5), 0xffd060, 0, [0, 0, H], [.55, 1.3, .55]),
     P(new T.OctahedronGeometry(.5), 0xffd060, 0, [H, 0, 0], [.55, 1.3, .55])], false, true);
+  const part = () => merge([P(tor(.26, .08, 6, 14), 0xe8a040, 0, 0, 1, METAL), P(cyl(.1, .1, .2, 8), 0xc9772a, 0, [H, 0, 0], 1, METAL),
+    ...[0, 1, 2, 3, 4, 5].map(i => P(box(.12, .14, .12), 0xe8a040, [Math.cos(i * 1.047) * .36, Math.sin(i * 1.047) * .36, 0], [0, 0, i * 1.047], 1, METAL))], false);
   const crab = () => merge([P(sph(.5, 12, 8), 0xe8552e, [0, .35, 0], 0, [1.25, .55, 1]),
     P(sph(.2, 8, 6), 0xf07a4a, [.58, .4, .5], 0, [1, .7, 1.4]), P(sph(.2, 8, 6), 0xf07a4a, [-.58, .4, .5], 0, [1, .7, 1.4]),
     P(cyl(.035, .035, .25, 6), 0xe8552e, [.2, .65, .35]), P(cyl(.035, .035, .25, 6), 0xe8552e, [-.2, .65, .35]),
@@ -195,5 +197,5 @@ const M = (() => {
     const t = new T.CanvasTexture(c); t.colorSpace = T.SRGBColorSpace; return t;
   }
 
-  return { P, merge, items, chest, letter, star, crab, rock, coral, kelp, box, cyl, cone, ico, sph, tor, lathe, atlas, sandTex, flameTex, coalTex, WOOD, METAL, CLAY, ROPE };
+  return { P, merge, items, chest, letter, star, part, crab, rock, coral, kelp, box, cyl, cone, ico, sph, tor, lathe, atlas, sandTex, flameTex, coalTex, WOOD, METAL, CLAY, ROPE };
 })();

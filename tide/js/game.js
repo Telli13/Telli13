@@ -10,7 +10,7 @@ const G = (() => {
   // ---------- сохранение ----------
   const fresh = () => ({
     light: 0, total: 0, lh: 0, up: {}, arts: [], letters: [], chests: [], bottles: [], quest: 0, pearls: 0,
-    heartDone: false, crabRate: 0, last: Date.now(), runs: 0,
+    heartDone: false, parts: [], posts: [], door: false, crabRate: 0, last: Date.now(), runs: 0,
     st: { picked: 0, burned: 0, bought: 0, goldBurned: 0, bestCombo: 0, maxZone: 0, heartPicked: 0, time: 0 },
     opt: { snd: 1, q: touch ? 0 : 1, sens: 1 }
   });
@@ -33,7 +33,7 @@ const G = (() => {
     C.reach = 4 + u.reach * 1.5; C.vacR = 5 + u.vacR * 1.5; C.vacW = D.VACW[u.vacP]; C.vacDt = .09 / (1 + u.vacP * .5);
     C.crabN = u.crab; C.crabSp = 3.2 * (1 + u.crabSp * .25); C.crabW = D.CRABW[u.crabSt];
     C.crabMul = .5 * (1 + u.crabV * .3) * (1 + a.crab); C.offH = u.crab ? 1 + u.night * 2 : 0;
-    C.lightMul = (1 + u.lens * .2) * (1 + a.light) * (1 + S.pearls * .5);
+    C.lightMul = (1 + u.lens * .2) * (1 + a.light) * (1 + S.pearls * .5) * (S.door ? 2 : 1);
     C.comboMax = 1.5 + u.combo * .5; C.comboTime = 5 + a.combo; C.critP = u.crit * .05;
     C.respawn = 200 * (1 - u.tide * .2) * (1 - Math.min(.5, a.tide)); C.goldMul = 1 + u.gold * .3 + a.gold;
     C.lit = D.LIT[S.lh];
@@ -60,7 +60,17 @@ const G = (() => {
   // ---------- сцена ----------
   let renderer, scene, camera, sun, hemi, sky, wall, water, flame = [], embers = [], coals, fireGlow, fireLight, beam, sunBall;
   let itemMat, rarMats, decorMat;
-  const colliders = [{ x: 0, z: 0, r: 3.9 }, { x: HP.x, z: HP.z, r: 2.6 }];
+  const colliders = [{ x: 0, z: 0, r: 3.9 }, { x: HP.x, z: HP.z, r: 2.6, forge: true }];
+  // горны: главный у маяка и дальние, которые игрок зажигает сам
+  const forges = [{ x: HP.x, z: HP.z, y: HP.y, r: 2.2, h: 1.9, ty: 1.3, main: true }];
+  function nearForge(x, z) { let b = forges[0], bd = 1e9; for (const f of forges) { const d = (f.x - x) ** 2 + (f.z - z) ** 2; if (d < bd) { bd = d; b = f; } } return b; }
+  let sprF, flameT;
+  function addFlames(bx, by, bz, n, R, sc) {
+    for (let i = 0; i < n; i++) {
+      const a = i * 2.39996, r = Math.sqrt(i / n) * R, c = 1 - r / R, sp = sprF(flameT, true); sp.center.set(.5, .06);
+      flame.push({ s: sp, bx, by, bz, sc, x: Math.cos(a) * r, z: Math.sin(a) * r, h: 1.3 + c * 1.5 + Math.random() * .5, w: .85 + c * .5 + Math.random() * .3, ph: Math.random() * 6, sp: 5 + Math.random() * 5 });
+    }
+  }
   const geo = {}, meshes = {}, inst = {};
   const cells = new Map();
   const specials = [], crabs = [], dyn = [], dead = [];
@@ -90,7 +100,7 @@ const G = (() => {
     const atlas = M.atlas(), mk = () => new T.MeshPhongMaterial({ vertexColors: true, map: atlas, shininess: 28, specular: 0x2a2a2a });
     itemMat = mk(); decorMat = mk(); decorMat.shininess = 8; decorMat.specular.set(0x111111);
     rarMats = D.RAR.map((r, i) => { const m = mk(); m.color.setRGB(...r.color); if (i) { m.shininess = 90; m.specular.set(i == 1 ? 0xffe9a0 : 0xd0a0ff); } return m; });
-    buildSky(); buildTerrain(); buildLighthouse(); buildDecor(); buildItems(); buildSpecials(); buildFx(); buildHands();
+    buildSky(); buildTerrain(); buildLighthouse(); buildDecor(); buildItems(); buildSpecials(); buildPosts(); buildFx(); buildHands();
     wallR = C.lit; syncCrabs();
     P.yaw = Math.atan2(-(HP.x - P.x), -(HP.z - P.z)) - .5;
     resize(); window.addEventListener('resize', resize);
@@ -179,10 +189,7 @@ const G = (() => {
     // живой огонь: языки пламени и искры из спрайтов
     const ft = M.flameTex(), gt = glowTex();
     const spr = (tex, norm) => { const sp = new T.Sprite(new T.SpriteMaterial({ map: tex, blending: norm ? T.NormalBlending : T.AdditiveBlending, depthWrite: false, transparent: true, fog: false, toneMapped: false })); sp.renderOrder = 6; scene.add(sp); return sp; };
-    for (let i = 0, n = S.opt.q ? 34 : 24; i < n; i++) {
-      const a = i * 2.39996, r = Math.sqrt(i / n) * 1.3, c = 1 - r / 1.3, sp = spr(ft, true); sp.center.set(.5, .06);
-      flame.push({ s: sp, x: Math.cos(a) * r, z: Math.sin(a) * r, h: 1.3 + c * 1.5 + Math.random() * .5, w: .85 + c * .5 + Math.random() * .3, ph: Math.random() * 6, sp: 5 + Math.random() * 5 });
-    }
+    sprF = spr; flameT = ft; addFlames(HP.x, HP.y + .72, HP.z, S.opt.q ? 34 : 24, 1.3, 1);
     for (let i = 0; i < 22; i++) embers.push({ s: spr(gt), life: Math.random() * 2, max: 2, x: 0, z: 0, vy: 1, ph: Math.random() * 6 });
     fireGlow = spr(gt); fireGlow.material.color.set(0xff8a30); fireGlow.material.color.set(0x3a1a05); fireGlow.position.set(HP.x, HP.y + 1.5, HP.z);
     fireLight = new T.PointLight(0xffa050, 30, 28, 1.6); fireLight.position.set(HP.x, HP.y + 2, HP.z); scene.add(fireLight);
@@ -191,8 +198,8 @@ const G = (() => {
     const pw = (.9 + S.lh * .04) * (1 + fireKick * .3);
     for (const f of flame) {
       const fl = .78 + .2 * Math.sin(time * f.sp + f.ph) + .12 * Math.sin(time * f.sp * 2.7 + f.ph * 2);
-      f.s.scale.set(f.w * pw * (.9 + .12 * Math.sin(time * f.sp * 1.3 + f.ph)), f.h * pw * fl, 1);
-      f.s.position.set(HP.x + f.x + Math.sin(time * 2.2 + f.ph) * .07, HP.y + .72, HP.z + f.z + Math.cos(time * 1.9 + f.ph) * .07);
+      f.s.scale.set(f.w * pw * f.sc * (.9 + .12 * Math.sin(time * f.sp * 1.3 + f.ph)), f.h * pw * f.sc * fl, 1);
+      f.s.position.set(f.bx + f.x + Math.sin(time * 2.2 + f.ph) * .07, f.by, f.bz + f.z + Math.cos(time * 1.9 + f.ph) * .07);
       f.s.material.opacity = .82 + .15 * Math.sin(time * f.sp * 1.7 + f.ph);
     }
     for (const e of embers) {
@@ -361,12 +368,58 @@ const G = (() => {
     [4, 5, 5, 6].forEach((n, zi) => { for (let i = 0; i < n; i++, id++) { const [x, z] = place(zi); if (!S.chests.includes(id)) addSpecial('chest', id, x, z, cg); } });
     id = 0;
     [3, 3, 3, 3].forEach((n, zi) => { for (let i = 0; i < n; i++, id++) { const [x, z] = place(zi); if (!S.bottles.includes(id)) addSpecial('bottle', id, x, z, lg); } });
+    const pg = M.part();                                   // спрятанные детали: 3 обломка ключа и по 3 детали горна на зону
+    for (id = 0; id < 12; id++) { const [x, z] = place(Math.floor(id / 3)); if (!S.parts.includes(id)) addSpecial('part', id, x, z, pg); }
+    if (S.door) openDoor(); else { const d = addSpecial('door', 0, 0, 4.3, M.box(.01, .01, .01)); d.mesh.visible = false; d.y = 1.5; d.glow.position.set(0, 1.9, 3.9); d.glow.scale.setScalar(2.2); }
+  }
+  function openDoor() {
+    const m = new T.Mesh(M.box(1.1, 2.2, .34), new T.MeshBasicMaterial({ color: 0x1a0c04 })); m.position.set(0, 1.75, 3.46); scene.add(m);
+    const g = new T.Sprite(new T.SpriteMaterial({ map: glowTex(), color: 0xffb050, blending: T.AdditiveBlending, depthWrite: false, transparent: true, fog: false })); g.scale.setScalar(3); g.position.set(0, 1.8, 3.7); scene.add(g);
+  }
+  const partsIn = z => S.parts.filter(i => Math.floor(i / 3) === z).length;
+  // дальние горны: по одному в зонах 2–4
+  let postGeo;
+  function buildPosts() {
+    postGeo = M.merge([M.P(M.cyl(1.0, 1.35, .4, 14), 0x8f8676, [0, .2, 0]),
+      M.P(M.lathe([[0, .36], [.8, .36], [1.3, .62], [1.5, .85], [1.6, .85], [1.42, .56], [.85, .3], [0, .3]], 18), 0xc98f3a, 0, 0, 1, M.METAL),
+      M.P(M.tor(1.55, .07, 6, 18), 0xe8b85a, [0, .85, 0], [Math.PI / 2, 0, 0], 1, M.METAL),
+      ...[0, 1, 2, 3, 4].map(i => M.P(M.cyl(.09, .1, .8, 6), 0x2a1a10, [Math.cos(i * 1.3) * .4, .5, Math.sin(i * 1.3) * .4], [Math.PI / 2, i * 1.3 + 1, 0], 1, M.WOOD))]);
+    [[1, 60, 1.5], [2, 97, 2.75], [3, 136, 4.6]].forEach(([zi, r, a0]) => {
+      let a = a0, x, z;
+      for (let k = 0; k < 40; k++, a += .12) { x = Math.cos(a) * r; z = Math.sin(a) * r; if (!colliders.some(c => (c.x - x) ** 2 + (c.z - z) ** 2 < (c.r + 4) ** 2)) break; }
+      const y = groundH(x, z), m = new T.Mesh(postGeo, decorMat); m.position.set(x, y, z); m.castShadow = m.receiveShadow = true; scene.add(m);
+      nearItems(x, z, 3.2, it => { if ((it.x - x) ** 2 + (it.z - z) ** 2 < 7) { it.home = false; removeItem(it); } });
+      colliders.push({ x, z, r: 1.75, forge: true });
+      const post = { id: zi, x, y, z };
+      if (S.posts.includes(zi)) lightPost(post);
+      else { const sp = addSpecial('post', zi, x, z, M.box(.01, .01, .01)); sp.mesh.visible = false; sp.y = y + .9; sp.glow.position.set(x, y + 1.6, z); sp.glow.scale.setScalar(4); sp.post = post; }
+    });
+  }
+  function lightPost(p) {
+    forges.push({ x: p.x, z: p.z, y: p.y, r: 1.7, h: 1.7, ty: 1.0 });
+    addFlames(p.x, p.y + .5, p.z, S.opt.q ? 14 : 10, .85, .7);
+    const c = new T.Mesh(new T.CircleGeometry(.95, 14), coals.material); c.rotation.x = -Math.PI / 2; c.position.set(p.x, p.y + .42, p.z); scene.add(c);
+    if (S.opt.q) { const l = new T.PointLight(0xffa050, 14, 18, 1.6); l.position.set(p.x, p.y + 1.8, p.z); scene.add(l); }
+  }
+  function dropSpecial(s) { scene.remove(s.mesh); scene.remove(s.glow); specials.splice(specials.indexOf(s), 1); }
+  function useSpecial(s) {                                  // дверь маяка и дальние горны
+    if (s.kind === 'door') {
+      const n = partsIn(0);
+      if (n < 3) { UI.toast('Дверь заперта. Обломки ключа спрятаны на Отмели: найдено ' + n + ' из 3'); A.play('no'); return; }
+      S.door = true; calc(); dropSpecial(s); openDoor(); A.play('level'); burst(0, 2, 4.2, 60, 0xffd080); save();
+      UI.popup('🗝️', 'Дверь маяка открыта', 'Внутри — комната прежнего хранителя. На столе карта дна с отметками и запасная линза, завёрнутая в парусину. Ты ставишь её в фонарь.', 'Линза хранителя: весь свет ×2 · Карта: стрелка всегда ведёт к ближайшей находке');
+    } else {
+      const n = partsIn(s.id);
+      if (n < 3) { UI.toast('Потухший горн. Не хватает деталей: найдено ' + n + ' из 3 — ищи в этой зоне'); A.play('no'); return; }
+      S.posts.push(s.id); dropSpecial(s); lightPost(s.post); A.play('level'); burst(s.x, s.y + 1, s.z, 70, 0xffc060); save();
+      UI.banner('Горн зажжён!', 'Теперь находки можно сжигать прямо здесь — и мешок, и крабы');
+    }
   }
   function addSpecial(kind, id, x, z, g, extra) {
     const mesh = new T.Mesh(g, kind === 'star' ? new T.MeshBasicMaterial({ vertexColors: true }) : decorMat);
     const c = cellAt(x, z), y = groundH(x, z) + (c ? c.h : 0) + (kind === 'chest' ? 0 : .45);
     mesh.position.set(x, y, z); mesh.rotation.y = x * 7; if (kind === 'bottle') mesh.rotation.z = .5; mesh.castShadow = true; scene.add(mesh);
-    const glow = new T.Sprite(new T.SpriteMaterial({ map: glowTex(), color: kind === 'chest' ? 0xffd070 : kind === 'bottle' ? 0x9ff0e0 : 0xfff0a0, blending: T.AdditiveBlending, depthWrite: false, transparent: true, fog: false }));
+    const glow = new T.Sprite(new T.SpriteMaterial({ map: glowTex(), color: kind === 'chest' ? 0xffd070 : kind === 'bottle' ? 0x9ff0e0 : kind === 'part' ? 0xff9a50 : kind === 'door' || kind === 'post' ? 0xffc070 : 0xfff0a0, blending: T.AdditiveBlending, depthWrite: false, transparent: true, fog: false }));
     glow.scale.setScalar(kind === 'star' ? 7 : 3.2); glow.position.set(x, y + .5, z); scene.add(glow);
     const s = Object.assign({ kind, id, x, y, z, mesh, glow }, extra || {}); specials.push(s); return s;
   }
@@ -380,6 +433,11 @@ const G = (() => {
       S.bottles.push(s.id); const li = D.LETTERS.findIndex((a, i) => !S.letters.includes(i));
       if (li >= 0) { S.letters.push(li); A.play('art'); UI.letter(li); }
     } else if (s.kind === 'star') { A.play('level'); gain(s.val, s, 'Упавшая звезда'); }
+    else if (s.kind === 'part') {
+      S.parts.push(s.id); A.play('art'); const z = Math.floor(s.id / 3), n = partsIn(z), nm = D.PARTS[s.id];
+      UI.popup(nm[1], nm[0], z ? 'Деталь дальнего горна в зоне «' + D.ZONES[z].name + '».' : 'Обломок ключа от двери маяка.',
+        n < 3 ? 'Найдено ' + n + ' из 3' : z ? 'Все детали собраны! Иди к потухшему горну и зажги его' : 'Ключ собран! Открой дверь маяка');
+    }
     save();
   }
   function spawnHeart() {
@@ -444,15 +502,15 @@ const G = (() => {
       }
       if (c.st === 1) {
         if (!c.tg.alive) { c.tg.claimed = false; c.st = 0; c.wait = .3; continue; } tx = c.tg.x; tz = c.tg.z;
-      } else { tx = HP.x; tz = HP.z; }
+      } else { tx = c.f.x; tz = c.f.z; }
       const dx = tx - c.x, dz = tz - c.z, d = Math.hypot(dx, dz), sp = C.crabSp * dt;
-      if (d > (c.st === 1 ? .9 : 3.5)) {
+      if (d > (c.st === 1 ? .9 : c.f.r + 1.3)) {
         c.x += dx / d * sp; c.z += dz / d * sp;
-        for (const o of colliders) { const ox = c.x - o.x, oz = c.z - o.z, od = Math.hypot(ox, oz); if (od < o.r + .5 && !(c.st === 2 && o.x === HP.x && o.z === HP.z)) { c.x = o.x + ox / od * (o.r + .5) + -oz / od * sp; c.z = o.z + oz / od * (o.r + .5) + ox / od * sp; } }
+        for (const o of colliders) { const ox = c.x - o.x, oz = c.z - o.z, od = Math.hypot(ox, oz); if (od < o.r + .5 && !(c.st === 2 && o.forge)) { c.x = o.x + ox / od * (o.r + .5) + -oz / od * sp; c.z = o.z + oz / od * (o.r + .5) + ox / od * sp; } }
         c.m.rotation.y = Math.atan2(dx, dz) + Math.PI / 2;
       } else if (c.st === 1) {
         const it = c.tg; it.claimed = false; removeItem(it); c.carry = { t: it.t, rar: it.rar, zone: it.zone };
-        c.cm.geometry = geo[it.t]; c.cm.material = rarMats[it.rar]; c.cm.visible = true; c.st = 2;
+        c.cm.geometry = geo[it.t]; c.cm.material = rarMats[it.rar]; c.cm.visible = true; c.st = 2; c.f = nearForge(c.x, c.z);
       } else {
         c.cm.visible = false; launch(c.carry, c.x, c.m.position.y + 1, c.z, 'crab'); c.carry = null; c.st = 0; c.wait = .4;
       }
@@ -466,7 +524,7 @@ const G = (() => {
     const m = new T.Mesh(geo[info.t], rarMats[info.rar]); m.position.set(x, y, z); m.castShadow = true; scene.add(m);
     const d = { m, info, from, vx: 0, vy: 0, vz: 0, mode: 'fly', far: 0 };
     if (vel) { d.vx = vel.x; d.vy = vel.y; d.vz = vel.z; }
-    else { const t = .55; d.vx = (HP.x - x) / t; d.vz = (HP.z - z) / t; d.vy = (HP.y + 1.3 - y + .5 * GRAV * t * t) / t; }
+    else { const f = nearForge(x, z), t = .55; d.vx = (f.x - x) / t; d.vz = (f.z - z) / t; d.vy = (f.y + f.ty - y + .5 * GRAV * t * t) / t; }
     dyn.push(d); return d;
   }
   function updDyn(dt) {
@@ -478,8 +536,8 @@ const G = (() => {
         else { p.x += dx / L * sp; p.y += dy / L * sp; p.z += dz / L * sp; d.m.scale.setScalar(Math.min(1, L / 3)); }
       } else {
         d.vy -= GRAV * dt; p.x += d.vx * dt; p.y += d.vy * dt; p.z += d.vz * dt;
-        const hd = Math.hypot(p.x - HP.x, p.z - HP.z);
-        if (hd < 2.2 && p.y < HP.y + 1.9 && p.y > HP.y) { burn(d); done = true; }
+        const f = nearForge(p.x, p.z), hd = Math.hypot(p.x - f.x, p.z - f.z);
+        if (hd < f.r && p.y < f.y + f.h && p.y > f.y - .2) { burn(d, f); done = true; }
         else if (p.y < groundH(p.x, p.z) + .3) {
           const r = Math.hypot(p.x, p.z);
           if (r < D.WORLD_R) addItem({ t: d.info.t, x: p.x, z: p.z, ry: Math.random() * 6, rx: 0, rz: 0, s: 1, rar: d.info.rar, zone: d.info.zone, home: false, tint: 1 });
@@ -495,7 +553,7 @@ const G = (() => {
     let v = D.ITEMS[info.t].v * D.ZONES[info.zone].mult * D.RAR[info.rar].mult;
     if (info.rar) v *= C.goldMul; return v;
   }
-  function burn(d) {
+  function burn(d, F) {
     const info = d.info, p = d.m.position;
     if (info.t === 'heart') { finish(); return; }
     let v = valueOf(info) * C.lightMul * (ev.type === 'glow' ? 2 : 1), tag = '';
@@ -508,9 +566,9 @@ const G = (() => {
       S.st.burned++; if (info.rar) S.st.goldBurned++;
       A.play('burn', combo.n);
     }
-    burst(p.x, HP.y + 1.4, p.z, d.from === 'crab' ? 5 : 12 + info.rar * 14, info.rar == 2 ? 0xc080ff : info.rar ? 0xffd040 : 0xffb060);
-    gain(v, { x: HP.x, y: HP.y + 2.6, z: HP.z }, tag, d.from === 'crab');
-    fireKick = 1;
+    burst(p.x, F.y + 1.2, p.z, d.from === 'crab' ? 5 : 12 + info.rar * 14, info.rar == 2 ? 0xc080ff : info.rar ? 0xffd040 : 0xffb060);
+    gain(v, { x: F.x, y: F.y + 2.4, z: F.z }, tag, d.from === 'crab');
+    if (F.main) fireKick = 1;
   }
   let fireKick = 0;
   function gain(v, pos, tag, small) {
@@ -539,9 +597,9 @@ const G = (() => {
     if (sx == null) ndc.set(0, 0); else ndc.set(sx / window.innerWidth * 2 - 1, -(sy / window.innerHeight) * 2 + 1);
     camera.updateMatrixWorld(); ray.setFromCamera(ndc, camera); const o = ray.ray.origin, d = ray.ray.direction;
     const hit = pickAt(o, d, C.reach);
-    if (hit && hit.sp) { takeSpecial(hit.sp); return; }
+    if (hit && hit.sp) { if (hit.sp.kind === 'door' || hit.sp.kind === 'post') useSpecial(hit.sp); else takeSpecial(hit.sp); return; }
     if (P.held) {                                 // с находкой в руках: целишься в горн — бросок
-      const hx = HP.x - o.x, hz = HP.z - o.z, hl = Math.hypot(hx, hz);
+      const F = nearForge(o.x, o.z), hx = F.x - o.x, hz = F.z - o.z, hl = Math.hypot(hx, hz);
       if (hl < 30 && (d.x * hx + d.z * hz) / (hl * Math.hypot(d.x, d.z) || 1) > .93) { throwHeld(d); return; }
     }
     if (hit) {
@@ -563,12 +621,12 @@ const G = (() => {
     const s = .2 / D.ITEMS[P.held.t].size; heldMesh.scale.setScalar(s); heldMesh.position.set(vacMesh.visible ? -.34 : .34, -.3, -.8); heldMesh.rotation.set(.3, .6, 0);
   }
   function throwHeld(d) {
-    const o = camera.position, dx = HP.x - o.x, dz = HP.z - o.z, dist = Math.hypot(dx, dz);
+    const o = camera.position, F = nearForge(o.x, o.z), dx = F.x - o.x, dz = F.z - o.z, dist = Math.hypot(dx, dz);
     let vel = null;
     const aim = (d.x * dx + d.z * dz) / (dist * Math.hypot(d.x, d.z) || 1);
     if (aim > .93 && dist < C.throwV * C.throwV / GRAV * .95 && dist > 1) {     // помощь в прицеливании
       const t = Math.max(.35, dist / (C.throwV * .8)), y0 = o.y - .3;
-      vel = new V3(dx / t, (HP.y + 1.3 - y0 + .5 * GRAV * t * t) / t, dz / t);
+      vel = new V3(dx / t, (F.y + F.ty - y0 + .5 * GRAV * t * t) / t, dz / t);
     } else vel = new V3(d.x * C.throwV, d.y * C.throwV + 2.5, d.z * C.throwV);
     const dd = launch(P.held, o.x + d.x * .6, o.y - .3, o.z + d.z * .6, 'hand', vel); dd.far = dist;
     P.held = null; showHeld(); A.play('throw');
@@ -640,7 +698,7 @@ const G = (() => {
     burst(HP.x, HP.y + 3, HP.z, 200, 0x7ffff0);
   }
   function rebirth() {
-    const keep = { arts: S.arts, letters: S.letters, chests: S.chests, bottles: S.bottles, opt: S.opt, pearls: S.pearls + 1 + Math.floor(S.arts.length / 5), runs: S.runs + 1 };
+    const keep = { door: false, arts: S.arts, letters: S.letters, chests: S.chests, bottles: S.bottles, opt: S.opt, pearls: S.pearls + 1 + Math.floor(S.arts.length / 5), runs: S.runs + 1 };
     S = Object.assign(fresh(), keep); for (const id in D.UP) S.up[id] = 0; save(); location.reload();
   }
   function wipe() { try { localStorage.removeItem(KEY); } catch (e) { } location.reload(); }
@@ -729,7 +787,7 @@ const G = (() => {
     beam.rotation.y += dt * .35;
     wallR = ending ? wallR : lerp(wallR, C.lit + 1.5, Math.min(1, dt * 1.2)); wall.scale.set(wallR, 1, wallR);
     updFx(dt); updDyn(dt); updSky();
-    for (const s of specials) { s.mesh.rotation.y += dt * (s.kind === 'star' ? 2 : .4); s.glow.material.opacity = .55 + .3 * Math.sin(time * 3 + s.x); if (s.kind === 'star') s.mesh.position.y = s.y + .6 + Math.sin(time * 2) * .2; }
+    for (const s of specials) { s.mesh.rotation.y += dt * (s.kind === 'star' || s.kind === 'part' ? 2 : .4); if (s.kind === 'part') s.mesh.position.y = s.y + .25 + Math.sin(time * 2 + s.x) * .12; s.glow.material.opacity = .55 + .3 * Math.sin(time * 3 + s.x); if (s.kind === 'star') s.mesh.position.y = s.y + .6 + Math.sin(time * 2) * .2; }
     const h = inst.heart[0]; heartPillar.visible = !!h; if (h) heartPillar.position.set(h.x, h.y + 78, h.z);
     renderer.render(scene, camera);
     UI.frame(dt);
@@ -756,10 +814,10 @@ const G = (() => {
     P.y = lerp(P.y, ty, Math.min(1, dt * 9));
     camera.position.set(P.x, P.y + EYE + Math.sin(P.bob) * .045, P.z); camera.rotation.set(P.pitch, P.yaw, 0);
     const pr = Math.hypot(P.x, P.z), z = pr < 16 ? -1 : zoneAt(pr);
-    if (z !== zoneShown) { zoneShown = z; if (z >= 0) { UI.zone(D.ZONES[z].name, '×' + D.ZONES[z].mult + ' света'); S.st.maxZone = Math.max(S.st.maxZone, z); } }
+    if (z !== zoneShown) { zoneShown = z; if (z >= 0) { UI.zone(D.ZONES[z].name, '×' + D.ZONES[z].mult + ' света'); S.st.maxZone = Math.max(S.st.maxZone, z); if (z >= 1 && !S.posts.includes(z)) UI.toast('Здесь есть потухший горн. Найди 3 детали (' + partsIn(z) + '/3) и зажги его — не придётся бегать к маяку'); } }
     // мешок высыпается у горна
-    const hd = Math.hypot(P.x - HP.x, P.z - HP.z); dumpT -= dt;
-    if (hd < 8.5 && P.bag.length && dumpT <= 0) { launch(P.bag.pop(), P.x, P.y + 1.2, P.z, 'bag'); dumpT = .11; A.play('throw'); }
+    const nf = nearForge(P.x, P.z), hd = Math.hypot(P.x - nf.x, P.z - nf.z); dumpT -= dt;
+    if (hd < (nf.main ? 8.5 : 6.5) && P.bag.length && dumpT <= 0) { launch(P.bag.pop(), P.x, P.y + 1.2, P.z, 'bag'); dumpT = .11; A.play('throw'); }
     updVac(dt); updCrabs(dt); updEvents(dt);
     if (combo.t > 0) { combo.t -= dt; if (combo.t <= 0) combo.n = 0; }
     // возвращение находок течением
@@ -774,19 +832,22 @@ const G = (() => {
     saveT += dt; if (saveT > 8) { saveT = 0; save(); }
   }
   function senseTarget() {
-    if (!S.up.sense) return null; let best = null, bd = 1e9;
-    for (const s of specials) { if (Math.hypot(s.x, s.z) > C.lit - 1) continue; const d = Math.hypot(s.x - P.x, s.z - P.z); if (d < bd) { bd = d; best = s; } }
+    if (!S.up.sense && !S.door) return null; let best = null, bd = 1e9;
+    for (const s of specials) {
+      if (s.kind === 'door' && partsIn(0) < 3) continue; if (s.kind === 'post' && partsIn(s.id) < 3) continue;
+      if (Math.hypot(s.x, s.z) > C.lit - 1) continue; const d = Math.hypot(s.x - P.x, s.z - P.z); if (d < bd) { bd = d; best = s; }
+    }
     return best && { d: bd, ang: Math.atan2(-(best.x - P.x), -(best.z - P.z)) - P.yaw, kind: best.kind };
   }
   function lookInfo() {            // подпись под прицелом
     ndc.set(0, 0); ray.setFromCamera(ndc, camera); const h = pickAt(ray.ray.origin, ray.ray.direction, C.reach);
-    if (!h) return null; if (h.sp) return { name: h.sp.kind === 'chest' ? 'Сундук' : h.sp.kind === 'bottle' ? 'Бутылка с письмом' : 'Упавшая звезда', sp: 1 };
+    if (!h) return null; if (h.sp) return { name: { chest: 'Сундук', bottle: 'Бутылка с письмом', star: 'Упавшая звезда', part: 'Спрятанная деталь', door: 'Дверь маяка', post: 'Потухший горн' }[h.sp.kind], sp: 1 };
     const I = D.ITEMS[h.it.t]; return { name: I.name, w: I.w, rar: h.it.rar, v: valueOf(h.it) * C.lightMul, heavy: I.w > C.str };
   }
   window.addEventListener('pagehide', save); document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
 
   return {
-    init, get S() { return S; }, C, P, input, buy, kindle, canSee, action, goHome, save, rebirth, wipe, calc, senseTarget, lookInfo, touch,
+    init, get S() { return S; }, C, P, input, buy, kindle, canSee, action, goHome, save, rebirth, wipe, calc, senseTarget, lookInfo, touch, partsIn, get forges() { return forges; },
     start() { running = true; A.unlock(); A.set(S.opt.snd); }, get running() { return running; }, get rate() { return rate; }, get combo() { return combo; },
     get ending() { return ending; }, project(p) { tv.set(p.x, p.y, p.z).project(camera); return tv.z > 1 ? null : { x: (tv.x + 1) / 2 * window.innerWidth, y: (1 - tv.y) / 2 * window.innerHeight }; },
     HP, _dbg: { inst, specials, crabs, dyn, takeSpecial, sim(n, dt) { for (let i = 0; i < n; i++) { time += dt; step(dt); updDyn(dt); updFire(dt); } }, get camera() { return camera; }, get ev() { return ev; } }

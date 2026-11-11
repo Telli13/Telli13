@@ -104,3 +104,6 @@ h3{margin:14px 0 8px;font:800 15px Rubik;color:#ffd66e}h3:first-child{margin-top
 #shop header{flex-wrap:wrap}#shop #tabs{order:3;flex-basis:100%}#shop .wallet{margin-left:4px;margin-right:auto;font-size:18px}
 body:not(.desk) #toasts{align-items:flex-start;padding-left:12px;bottom:calc(150px + env(safe-area-inset-bottom))}
 body:not(.desk) #toasts div{max-width:64vw;text-align:left}
+
+.stages{display:flex;flex-wrap:wrap;gap:6px}.stages span{flex:1 1 130px;background:#fff1;border-radius:10px;padding:6px 8px;font-size:12px;opacity:.5}
+.stages span small{display:block;font-size:10px;opacity:.8;line-height:1.2}.stages span.ok{opacity:.85;background:#2fae7c33}.stages span.now{opacity:1;background:#f2c07833;outline:2px solid #f2c078}

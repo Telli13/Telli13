@@ -55,6 +55,13 @@ const UI = (() => {
         (S.lh < 8 ? `<p>Разожги огонь сильнее: мгла отступит до ${D.LIT[S.lh + 1]} м, откроются новые улучшения${[1, 3, 5].includes(S.lh) ? ' и <b>новая зона с дорогими находками</b>' : ''}.</p><button data-id="lh">Разжечь — ${D.fmt(c)} ✦</button>`
           : `<p>Огонь горит в полную силу. ${S.heartDone ? 'Море вернулось.' : 'Найди Сердце моря на краю бездны — иди на столб света.'}</p>`) + '</div>';
     }
+    if (tab === 'hands') {
+      const st = D.stage(S);
+      h += `<div class="card main"><div class="hd"><span class="ic">${D.STAGES[st][0]}</span>Как ты собираешь: ${D.STAGES[st][1]}<span class="lv">этап ${st + 1}/4</span></div><div class="stages">` +
+        D.STAGES.map((x, i) => `<span class="${i < st ? 'ok' : i === st ? 'now' : ''}">${x[0]} ${x[1]}<small>${x[2]}</small></span>`).join('') + '</div>' +
+        `<p>${['Дальше: купи «Заплечный мешок» ниже — будешь носить по 4 находки и больше.', 'Дальше: «Раковина-вихрь» во вкладке «Снасти»' + (S.lh < 1 ? ' (нужен 1-й уровень маяка)' : '') + ' — собирает находки как пылесос.',
+          'Дальше: прокачай «Мощь вихря» до конца — вихрь поднимет даже пушки.', 'Максимальный этап. Тебя не остановить.'][st]}</p></div>`;
+    }
     for (const id in D.UP) {
       const u = D.UP[id]; if (u.tab !== tab) continue;
       const l = S.up[id], see = G.canSee(id), mx = l >= u.max, c = D.cost(id, l), can = see && !mx && S.light >= c;
@@ -74,6 +81,8 @@ const UI = (() => {
     });
     h += `</div><h3>Письма хранителя ${S.letters.length}/${D.LETTERS.length}</h3>`;
     D.LETTERS.forEach((l, i) => { h += S.letters.includes(i) ? `<div class="letter"><b>${l[0]}</b>${l[1]}</div>` : `<div class="letter no"><b>Письмо ${i + 1}</b>Ещё лежит в бутылке где-то на дне…</div>`; });
+    h += '<h3>Спрятанные детали</h3>' + `<div class="row"><span>🗝️ Ключ маяка (Отмель)</span><b>${S.door ? 'дверь открыта ✔' : G.partsIn(0) + '/3'}</b></div>` +
+      [1, 2, 3].map(z => `<div class="row"><span>🔥 Горн: ${D.ZONES[z].name}</span><b>${S.posts.includes(z) ? 'горит ✔' : G.partsIn(z) + '/3'}</b></div>`).join('');
     const m = Math.floor(S.st.time / 60);
     h += `<h3>Журнал</h3><div class="row"><span>Сожжено находок</span><b>${S.st.burned}</b></div><div class="row"><span>Всего света</span><b>${D.fmt(S.total)} ✦</b></div>
       <div class="row"><span>Лучшая серия</span><b>${S.st.bestCombo}</b></div><div class="row"><span>На дне</span><b>${m} мин</b></div><div class="row"><span>Жемчужины прилива</span><b>${S.pearls}</b></div>`;
@@ -131,10 +140,10 @@ const UI = (() => {
     const cb = G.combo; $('combo').classList.toggle('hide', cb.n < 2);
     if (cb.n >= 2) $('combo').innerHTML = 'серия ' + cb.n + '<small>×' + (1 + Math.min(cb.n, 20) / 20 * (C.comboMax - 1)).toFixed(2) + ' света</small>';
     const li = openName ? null : G.lookInfo();
-    $('look').innerHTML = !li ? '' : li.sp ? `<b class="g">${li.name}</b><br>нажми, чтобы открыть` :
+    $('look').innerHTML = !li ? '' : li.sp ? `<b class="g">${li.name}</b><br>нажми` :
       `<b class="${li.rar == 2 ? 'a' : li.rar ? 'g' : ''}">${li.name}${li.rar ? ' — ' + D.RAR[li.rar].name : ''}</b> · <span class="${li.heavy ? 'h' : ''}">${li.w} кг</span> · ${D.fmt(li.v)} ✦`;
     const st = G.senseTarget(); $('sense').classList.toggle('hide', !st);
-    if (st) { $('sense').firstChild.style.transform = `rotate(${-st.ang * 180 / Math.PI - 90}deg)`; $('sense').lastChild.textContent = (st.kind === 'chest' ? 'сундук' : st.kind === 'bottle' ? 'письмо' : 'звезда') + ' · ' + Math.round(st.d) + ' м'; }
+    if (st) { $('sense').firstChild.style.transform = `rotate(${-st.ang * 180 / Math.PI - 90}deg)`; $('sense').lastChild.textContent = ({ chest: 'сундук', bottle: 'письмо', star: 'звезда', part: 'деталь', door: 'дверь маяка', post: 'горн' }[st.kind]) + ' · ' + Math.round(st.d) + ' м'; }
     if (openName === 'shop') document.querySelector('#shop .wallet').textContent = D.fmt(S.light) + ' ✦';
   }
 
