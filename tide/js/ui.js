@@ -89,7 +89,7 @@ const UI = (() => {
     $('oSnd').onclick = () => { S.opt.snd = S.opt.snd ? 0 : 1; A.set(S.opt.snd); G.save(); drawSet(); };
     $('oQ').onclick = () => { S.opt.q = S.opt.q ? 0 : 1; G.save(); location.reload(); };
     $('oSens').oninput = e => { S.opt.sens = +e.target.value; G.save(); };
-    $('oWipe').onclick = () => { if (confirm('Точно стереть весь прогресс?')) G.wipe(); };
+    $('oWipe').onclick = e => { if (e.target.dataset.sure) G.wipe(); else { e.target.dataset.sure = 1; e.target.textContent = 'Точно стереть?'; } };
     if ($('oNew')) $('oNew').onclick = () => G.rebirth();
   }
   function popup(em, title, text, extra) { popQ.push([em, title, text, extra]); if ($('popup').classList.contains('hide')) nextPop(); }

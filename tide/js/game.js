@@ -616,7 +616,7 @@ const G = (() => {
     const keep = { arts: S.arts, letters: S.letters, chests: S.chests, bottles: S.bottles, opt: S.opt, pearls: S.pearls + 1 + Math.floor(S.arts.length / 5), runs: S.runs + 1 };
     S = Object.assign(fresh(), keep); for (const id in D.UP) S.up[id] = 0; save(); location.reload();
   }
-  function wipe() { localStorage.removeItem(KEY); location.reload(); }
+  function wipe() { try { localStorage.removeItem(KEY); } catch (e) { } location.reload(); }
 
   // ---------- ввод ----------
   function bindInput(cv) {
