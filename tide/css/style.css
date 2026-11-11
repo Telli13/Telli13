@@ -107,3 +107,4 @@ body:not(.desk) #toasts div{max-width:64vw;text-align:left}
 
 .stages{display:flex;flex-wrap:wrap;gap:6px}.stages span{flex:1 1 130px;background:#fff1;border-radius:10px;padding:6px 8px;font-size:12px;opacity:.5}
 .stages span small{display:block;font-size:10px;opacity:.8;line-height:1.2}.stages span.ok{opacity:.85;background:#2fae7c33}.stages span.now{opacity:1;background:#f2c07833;outline:2px solid #f2c078}
+#shop #tabs{flex-wrap:wrap;overflow:visible}#tabs button{padding:7px 9px}

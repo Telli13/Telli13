@@ -29,7 +29,8 @@ const UI = (() => {
     $('tabs').onclick = e => { const t = e.target.dataset.t; if (t) { tab = t; drawShop(); } };
     $('shopBody').onclick = e => {
       const b = e.target.closest('button'); if (!b) return;
-      if (b.dataset.id === 'lh') G.kindle(); else G.buy(b.dataset.id); drawShop();
+      if (b.dataset.id === 'belt') { const r = G.buildBelt(); if (r === true) { toggle(null); return; } toast(r); }
+      else if (b.dataset.id === 'lh') G.kindle(); else G.buy(b.dataset.id); drawShop();
     };
   }
 
@@ -54,6 +55,13 @@ const UI = (() => {
       h += `<div class="card main ${can ? 'can' : ''}"><div class="hd"><span class="ic">🗼</span>Маяк: ${D.LH_NAMES[S.lh]}<span class="lv">${S.lh}/8</span></div>` +
         (S.lh < 8 ? `<p>Разожги огонь сильнее: мгла отступит до ${D.LIT[S.lh + 1]} м, откроются новые улучшения${[1, 3, 5].includes(S.lh) ? ' и <b>новая зона с дорогими находками</b>' : ''}.</p><button data-id="lh">Разжечь — ${D.fmt(c)} ✦</button>`
           : `<p>Огонь горит в полную силу. ${S.heartDone ? 'Море вернулось.' : 'Найди Сердце моря на краю бездны — иди на столб света.'}</p>`) + '</div>';
+    }
+    if (tab === 'belt') {
+      const n = G.beltSegs(), c = G.beltCost(), can = S.lh >= 1 && n < 16 && S.light >= c;
+      h += `<div class="card main ${can ? 'can' : ''}"><div class="hd"><span class="ic">🛤</span>Лента к горну<span class="lv">${n}/16 секций · ${n * 10} м</span></div>
+        <p>Как на фабрике: положил находку на ленту — она сама едет в огонь. Мешок высыпается на ленту сам, крабы тоже несут к ней.<br>
+        <b>Как строить:</b> встань там, куда вести ленту, и нажми кнопку. Секция (10 м) строится от ${n ? 'конца ленты' : 'горна'} в твою сторону.</p>
+        <button data-id="belt">${S.lh < 1 ? 'Нужен 1-й уровень маяка' : n >= 16 ? 'Максимум' : 'Построить секцию — ' + D.fmt(c) + ' ✦'}</button></div>`;
     }
     if (tab === 'hands') {
       const st = D.stage(S);

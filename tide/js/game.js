@@ -10,7 +10,7 @@ const G = (() => {
   // ---------- сохранение ----------
   const fresh = () => ({
     light: 0, total: 0, lh: 0, up: {}, arts: [], letters: [], chests: [], bottles: [], quest: 0, pearls: 0,
-    heartDone: false, parts: [], posts: [], door: false, crabRate: 0, last: Date.now(), runs: 0,
+    heartDone: false, parts: [], posts: [], door: false, belt: [], crabRate: 0, last: Date.now(), runs: 0,
     st: { picked: 0, burned: 0, bought: 0, goldBurned: 0, bestCombo: 0, maxZone: 0, heartPicked: 0, time: 0 },
     opt: { snd: 1, q: touch ? 0 : 1, sens: 1 }
   });
@@ -36,7 +36,7 @@ const G = (() => {
     C.lightMul = (1 + u.lens * .2) * (1 + a.light) * (1 + S.pearls * .5) * (S.door ? 2 : 1);
     C.comboMax = 1.5 + u.combo * .5; C.comboTime = 5 + a.combo; C.critP = u.crit * .05;
     C.respawn = 200 * (1 - u.tide * .2) * (1 - Math.min(.5, a.tide)); C.goldMul = 1 + u.gold * .3 + a.gold;
-    C.lit = D.LIT[S.lh];
+    C.lit = D.LIT[S.lh]; C.beltSp = 4 * (1 + u.beltSp * .3);
   }
 
   // ---------- утилиты ----------
@@ -100,7 +100,7 @@ const G = (() => {
     const atlas = M.atlas(), mk = () => new T.MeshPhongMaterial({ vertexColors: true, map: atlas, shininess: 28, specular: 0x2a2a2a });
     itemMat = mk(); decorMat = mk(); decorMat.shininess = 8; decorMat.specular.set(0x111111);
     rarMats = D.RAR.map((r, i) => { const m = mk(); m.color.setRGB(...r.color); if (i) { m.shininess = 90; m.specular.set(i == 1 ? 0xffe9a0 : 0xd0a0ff); } return m; });
-    buildSky(); buildTerrain(); buildLighthouse(); buildDecor(); buildItems(); buildSpecials(); buildPosts(); buildFx(); buildHands();
+    buildSky(); buildTerrain(); buildLighthouse(); buildDecor(); buildItems(); buildSpecials(); buildPosts(); buildFx(); buildHands(); for (let i = 0; i + 1 < S.belt.length; i++) addSeg(i);
     wallR = C.lit; syncCrabs();
     P.yaw = Math.atan2(-(HP.x - P.x), -(HP.z - P.z)) - .5;
     resize(); window.addEventListener('resize', resize);
@@ -473,6 +473,67 @@ const G = (() => {
     vacMesh.position.set(.42, -.34, -.75); vacMesh.scale.setScalar(.6); vacMesh.visible = false; camera.add(vacMesh);
   }
 
+  // ---------- лента: покупные секции по 10 м, везут находки в главный горн ----------
+  const SEG = 10, beltItems = []; let beltMat, segGeo;
+  const beltSegs = () => Math.max(0, S.belt.length - 1), beltCost = () => Math.round(300 * Math.pow(1.5, beltSegs()));
+  const beltY = i => i === 0 ? HP.y + 1.0 : groundH(S.belt[i][0], S.belt[i][1]) + .6;
+  function addSeg(i) {
+    if (!beltMat) {
+      const c = document.createElement('canvas'); c.width = 64; c.height = 64; const x = c.getContext('2d');
+      x.fillStyle = '#3a3d44'; x.fillRect(0, 0, 64, 64); x.fillStyle = '#23252a'; for (let y = 0; y < 64; y += 16) x.fillRect(0, y, 64, 5);
+      x.fillStyle = '#e8b85a'; x.fillRect(0, 0, 4, 64); x.fillRect(60, 0, 4, 64);
+      const t = new T.CanvasTexture(c); t.colorSpace = T.SRGBColorSpace; t.wrapS = t.wrapT = T.RepeatWrapping; t.repeat.set(1, SEG);
+      beltMat = new T.MeshLambertMaterial({ map: t });
+      segGeo = M.merge([M.P(M.box(.09, .22, SEG), 0xc98f3a, [.66, .04, 0], 0, 1, M.METAL), M.P(M.box(.09, .22, SEG), 0xc98f3a, [-.66, .04, 0], 0, 1, M.METAL),
+        ...[-4, 0, 4].flatMap(z => [M.P(M.cyl(.07, .09, .9, 6), 0x5a4a3a, [.55, -.5, z], 0, 1, M.WOOD), M.P(M.cyl(.07, .09, .9, 6), 0x5a4a3a, [-.55, -.5, z], 0, 1, M.WOOD),
+          M.P(M.cyl(.09, .09, 1.3, 8), 0x4c5864, [0, -.07, z], [0, 0, Math.PI / 2], 1, M.METAL)])], false);
+    }
+    const a = S.belt[i], b = S.belt[i + 1], ya = beltY(i), yb = beltY(i + 1), g = new T.Group();
+    const top = new T.Mesh(new T.BoxGeometry(1.24, .1, SEG), beltMat), fr = new T.Mesh(segGeo, decorMat); top.receiveShadow = fr.castShadow = true; g.add(top, fr);
+    g.position.set((a[0] + b[0]) / 2, (ya + yb) / 2, (a[1] + b[1]) / 2); g.lookAt(b[0], yb, b[1]); scene.add(g);
+    for (let k = 0; k <= SEG; k += 1.5) {                    // расчищаем место под лентой
+      const x = lerp(a[0], b[0], k / SEG), z = lerp(a[1], b[1], k / SEG);
+      nearItems(x, z, 1.6, it => { if ((it.x - x) ** 2 + (it.z - z) ** 2 < 2 && it.t !== 'heart') { it.home = false; removeItem(it); } });
+    }
+  }
+  function buildBelt() {
+    if (S.lh < 1) return 'Сначала разожги маяк хотя бы раз';
+    if (beltSegs() >= 16) return 'Лента уже максимальной длины';
+    const c = beltCost(); if (S.light < c) return 'Не хватает света: нужно ' + D.fmt(c) + ' ✦';
+    let from = S.belt[S.belt.length - 1], first = !from;
+    if (first) { const dx = P.x - HP.x, dz = P.z - HP.z, d = Math.hypot(dx, dz); if (d < 8) return 'Отойди от горна в ту сторону, куда вести ленту'; from = [HP.x + dx / d * 2.7, HP.z + dz / d * 2.7]; }
+    const dx = P.x - from[0], dz = P.z - from[1], d = Math.hypot(dx, dz);
+    if (d < 5) return 'Отойди дальше от конца ленты — секция строится в твою сторону';
+    const to = [from[0] + dx / d * SEG, from[1] + dz / d * SEG];
+    if (Math.hypot(to[0], to[1]) > C.lit - 1) return 'Туда лента не дотянется — там мгла. Разожги маяк сильнее';
+    if (Math.hypot(to[0], to[1]) < 8) return 'Слишком близко к маяку';
+    S.light -= c; if (first) S.belt.push(from); S.belt.push(to); addSeg(S.belt.length - 2); A.play('level'); save();
+    UI.banner('Секция ленты построена', 'Клади находки на ленту — они сами поедут в огонь'); return true;
+  }
+  function nearBelt(x, z) {                                   // ближайшая точка ленты: расстояние d и путь s от горна
+    let best = null;
+    for (let i = 0; i + 1 < S.belt.length; i++) {
+      const a = S.belt[i], b = S.belt[i + 1], t = clamp(((x - a[0]) * (b[0] - a[0]) + (z - a[1]) * (b[1] - a[1])) / (SEG * SEG), 0, 1);
+      const px = lerp(a[0], b[0], t), pz = lerp(a[1], b[1], t), d = Math.hypot(x - px, z - pz);
+      if (!best || d < best.d) best = { d, s: (i + t) * SEG, x: px, z: pz, y: lerp(beltY(i), beltY(i + 1), t) };
+    }
+    return best;
+  }
+  function beltPut(info, s, from) {
+    const m = new T.Mesh(geo[info.t], rarMats[info.rar]); m.castShadow = true; m.rotation.y = Math.random() * 6; scene.add(m);
+    beltItems.push({ m, info, s, from });
+  }
+  function updBelt(dt) {
+    if (beltMat) beltMat.map.offset.y -= dt * C.beltSp;
+    for (let k = beltItems.length - 1; k >= 0; k--) {
+      const b = beltItems[k]; b.s -= C.beltSp * dt;
+      const i = Math.min(S.belt.length - 2, Math.max(0, Math.floor(b.s / SEG))), t = clamp(b.s / SEG - i, 0, 1), A0 = S.belt[i], B0 = S.belt[i + 1];
+      const x = lerp(A0[0], B0[0], t), z = lerp(A0[1], B0[1], t), y = lerp(beltY(i), beltY(i + 1), t) + .08 + D.ITEMS[b.info.t].size * .45;
+      b.m.position.set(x, y, z);
+      if (b.s <= 0) { scene.remove(b.m); beltItems.splice(k, 1); const d = launch(b.info, x, y, z, b.from); d.noBelt = true; }
+    }
+  }
+
   // ---------- крабы ----------
   let crabGeo;
   function syncCrabs() {
@@ -502,17 +563,18 @@ const G = (() => {
       }
       if (c.st === 1) {
         if (!c.tg.alive) { c.tg.claimed = false; c.st = 0; c.wait = .3; continue; } tx = c.tg.x; tz = c.tg.z;
-      } else { tx = c.f.x; tz = c.f.z; }
+      } else if (c.b) { tx = c.b.x; tz = c.b.z; } else { tx = c.f.x; tz = c.f.z; }
       const dx = tx - c.x, dz = tz - c.z, d = Math.hypot(dx, dz), sp = C.crabSp * dt;
-      if (d > (c.st === 1 ? .9 : c.f.r + 1.3)) {
+      if (d > (c.st === 1 ? .9 : c.b ? 1.1 : c.f.r + 1.3)) {
         c.x += dx / d * sp; c.z += dz / d * sp;
         for (const o of colliders) { const ox = c.x - o.x, oz = c.z - o.z, od = Math.hypot(ox, oz); if (od < o.r + .5 && !(c.st === 2 && o.forge)) { c.x = o.x + ox / od * (o.r + .5) + -oz / od * sp; c.z = o.z + oz / od * (o.r + .5) + ox / od * sp; } }
         c.m.rotation.y = Math.atan2(dx, dz) + Math.PI / 2;
       } else if (c.st === 1) {
         const it = c.tg; it.claimed = false; removeItem(it); c.carry = { t: it.t, rar: it.rar, zone: it.zone };
-        c.cm.geometry = geo[it.t]; c.cm.material = rarMats[it.rar]; c.cm.visible = true; c.st = 2; c.f = nearForge(c.x, c.z);
+        c.cm.geometry = geo[it.t]; c.cm.material = rarMats[it.rar]; c.cm.visible = true; c.st = 2; c.f = nearForge(c.x, c.z); c.b = null;
+        if (S.belt.length > 1) { const nb = nearBelt(c.x, c.z); if (nb.d + 3 < Math.hypot(c.f.x - c.x, c.f.z - c.z)) c.b = nb; }
       } else {
-        c.cm.visible = false; launch(c.carry, c.x, c.m.position.y + 1, c.z, 'crab'); c.carry = null; c.st = 0; c.wait = .4;
+        c.cm.visible = false; if (c.b) beltPut(c.carry, c.b.s, 'crab'); else launch(c.carry, c.x, c.m.position.y + 1, c.z, 'crab'); c.carry = null; c.st = 0; c.wait = .4;
       }
       const cl = cellAt(c.x, c.z);
       c.m.position.set(c.x, groundH(c.x, c.z) + (cl ? cl.h * .5 : 0) + Math.abs(Math.sin(time * 14 + c.x)) * .08, c.z);
@@ -529,7 +591,7 @@ const G = (() => {
   }
   function updDyn(dt) {
     for (let i = dyn.length - 1; i >= 0; i--) {
-      const d = dyn[i], p = d.m.position; let done = false;
+      const d = dyn[i], p = d.m.position; let done = false, nb;
       if (d.mode === 'suck') {
         const tx = camera.position.x, ty = camera.position.y - .5, tz = camera.position.z, dx = tx - p.x, dy = ty - p.y, dz = tz - p.z, L = Math.hypot(dx, dy, dz), sp = 22 * dt;
         if (L < sp + .5) { P.bag.push(d.info); P.incoming--; A.play('pop'); done = true; }
@@ -538,6 +600,9 @@ const G = (() => {
         d.vy -= GRAV * dt; p.x += d.vx * dt; p.y += d.vy * dt; p.z += d.vz * dt;
         const f = nearForge(p.x, p.z), hd = Math.hypot(p.x - f.x, p.z - f.z);
         if (hd < f.r && p.y < f.y + f.h && p.y > f.y - .2) { burn(d, f); done = true; }
+        else if (!d.noBelt && d.vy < 0 && S.belt.length > 1 && (nb = nearBelt(p.x, p.z)).d < 1.15 && p.y < nb.y + .5 && beltItems.length < 200) {
+          beltPut(d.info, nb.s, d.from === 'crab' ? 'crab' : 'hand'); A.play('pop'); done = true;
+        }
         else if (p.y < groundH(p.x, p.z) + .3) {
           const r = Math.hypot(p.x, p.z);
           if (r < D.WORLD_R) addItem({ t: d.info.t, x: p.x, z: p.z, ry: Math.random() * 6, rx: 0, rz: 0, s: 1, rar: d.info.rar, zone: d.info.zone, home: false, tint: 1 });
@@ -818,7 +883,11 @@ const G = (() => {
     // мешок высыпается у горна
     const nf = nearForge(P.x, P.z), hd = Math.hypot(P.x - nf.x, P.z - nf.z); dumpT -= dt;
     if (hd < (nf.main ? 8.5 : 6.5) && P.bag.length && dumpT <= 0) { launch(P.bag.pop(), P.x, P.y + 1.2, P.z, 'bag'); dumpT = .11; A.play('throw'); }
-    updVac(dt); updCrabs(dt); updEvents(dt);
+    else if (P.bag.length && dumpT <= 0 && S.belt.length > 1) {              // мешок высыпается на ленту
+      const nb = nearBelt(P.x, P.z);
+      if (nb.d < 4.5) { const t = .4, y0 = P.y + 1.2; launch(P.bag.pop(), P.x, y0, P.z, 'bag', new V3((nb.x - P.x) / t, (nb.y + .3 - y0 + .5 * GRAV * t * t) / t, (nb.z - P.z) / t)); dumpT = .13; A.play('throw'); }
+    }
+    updVac(dt); updCrabs(dt); updBelt(dt); updEvents(dt);
     if (combo.t > 0) { combo.t -= dt; if (combo.t <= 0) combo.n = 0; }
     // возвращение находок течением
     if (dead.length && time - dead[0].at > C.respawn) {
@@ -847,7 +916,7 @@ const G = (() => {
   window.addEventListener('pagehide', save); document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
 
   return {
-    init, get S() { return S; }, C, P, input, buy, kindle, canSee, action, goHome, save, rebirth, wipe, calc, senseTarget, lookInfo, touch, partsIn, get forges() { return forges; },
+    init, get S() { return S; }, C, P, input, buy, kindle, canSee, action, goHome, save, rebirth, wipe, calc, senseTarget, lookInfo, touch, partsIn, get forges() { return forges; }, buildBelt, beltCost, beltSegs, get beltItems() { return beltItems; },
     start() { running = true; A.unlock(); A.set(S.opt.snd); }, get running() { return running; }, get rate() { return rate; }, get combo() { return combo; },
     get ending() { return ending; }, project(p) { tv.set(p.x, p.y, p.z).project(camera); return tv.z > 1 ? null : { x: (tv.x + 1) / 2 * window.innerWidth, y: (1 - tv.y) / 2 * window.innerHeight }; },
     HP, _dbg: { inst, specials, crabs, dyn, takeSpecial, sim(n, dt) { for (let i = 0; i < n; i++) { time += dt; step(dt); updDyn(dt); updFire(dt); } }, get camera() { return camera; }, get ev() { return ev; } }
