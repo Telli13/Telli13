@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#f2c078">
+<title>Отлив: Хранитель маяка</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<canvas id="cv"></canvas>
+
+<div id="hud" class="hide">
+  <div id="top">
+    <div id="money"><span id="light">0</span> <b>✦</b><small id="rate"></small></div>
+    <div id="lh"><div id="lhName"></div><div id="lhBar"><i></i></div></div>
+    <div id="btns">
+      <button id="bShop" title="Улучшения (U)">⬆<em id="shopDot"></em></button>
+      <button id="bBook" title="Коллекция (C)">📖</button>
+      <button id="bSet" title="Настройки">⚙</button>
+    </div>
+  </div>
+  <div id="quest"></div>
+  <div id="event" class="hide"><span></span><i></i></div>
+  <div id="combo" class="hide"></div>
+  <div id="cross"></div>
+  <div id="look"></div>
+  <div id="sense" class="hide"><i>➤</i><span></span></div>
+  <div id="carry"><span id="held"></span><span id="bag"></span></div>
+  <div id="zone"></div>
+  <div id="stick"><div id="knob"></div></div>
+  <div id="pad">
+    <button id="bHome" class="hide">🏠</button>
+    <button id="bVac" class="hide">🌀</button>
+    <button id="bAct">✋</button>
+  </div>
+  <div id="floaters"></div>
+  <div id="toasts"></div>
+  <div id="banner"><b></b><span></span></div>
+</div>
+
+<div id="shop" class="panel hide"><div class="box">
+  <header><div id="tabs"></div><span class="wallet"></span><button class="x">✕</button></header>
+  <div id="shopBody"></div>
+</div></div>
+<div id="book" class="panel hide"><div class="box">
+  <header><div class="ttl">Коллекция</div><button class="x">✕</button></header>
+  <div id="bookBody"></div>
+</div></div>
+<div id="set" class="panel hide"><div class="box small">
+  <header><div class="ttl">Настройки</div><button class="x">✕</button></header>
+  <div id="setBody"></div>
+</div></div>
+<div id="popup" class="panel hide"><div class="box small pop"><div id="popBody"></div><button id="popOk" class="big">Дальше</button></div></div>
+
+<div id="start">
+  <div class="logo"><small>хранитель маяка</small>ОТЛИВ</div>
+  <p id="intro">Однажды утром море ушло.<br>На обнажённом дне лежит всё, что оно когда-либо забрало.<br>Огонь маяка питается памятью потерянных вещей — разожги его, и море найдёт дорогу домой.</p>
+  <button id="play" class="big">Выйти на дно</button>
+  <div id="help"></div>
+</div>
+<div id="end" class="hide"><div id="endText"></div><div id="endBox" class="hide"></div></div>
+
+<script src="js/lib/three.min.js"></script>
+<script src="js/data.js"></script>
+<script src="js/models.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/game.js"></script>
+<script>G.init(); UI.init();</script>
+</body>
+</html>
