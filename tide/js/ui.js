@@ -93,7 +93,7 @@ const UI = (() => {
       [1, 2, 3].map(z => `<div class="row"><span>🔥 Горн: ${D.ZONES[z].name}</span><b>${S.posts.includes(z) ? 'горит ✔' : G.partsIn(z) + '/3'}</b></div>`).join('');
     const m = Math.floor(S.st.time / 60);
     h += `<h3>Журнал</h3><div class="row"><span>Сожжено находок</span><b>${S.st.burned}</b></div><div class="row"><span>Всего света</span><b>${D.fmt(S.total)} ✦</b></div>
-      <div class="row"><span>Лучшая серия</span><b>${S.st.bestCombo}</b></div><div class="row"><span>На дне</span><b>${m} мин</b></div><div class="row"><span>Жемчужины прилива</span><b>${S.pearls}</b></div>`;
+      <div class="row"><span>Лучшая серия</span><b>${S.st.bestCombo}</b></div><div class="row"><span>На дне</span><b>${m} мин</b></div><div class="row"><span>Жемчужины прилива</span><b>${S.pearls}</b></div><div class="row"><span>Сытость · припасы · аптечка</span><b>${Math.round(S.hunger)}% · 🍖${S.food} · 💊${S.meds}</b></div>`;
     $('bookBody').innerHTML = h;
   }
   function drawSet() {
@@ -145,10 +145,12 @@ const UI = (() => {
     $('bHome').textContent = Math.hypot(P.x, P.z) > 14 ? '🏠' : '↩';
     $('held').textContent = P.held ? '✋ ' + D.ITEMS[P.held.t].name + ' · ' + D.ITEMS[P.held.t].w + ' кг' : '';
     $('bag').textContent = C.bagCap ? '🎒 ' + P.bag.length + '/' + C.bagCap : '';
+    $('hun').firstChild.style.width = S.hunger + '%'; $('hun').classList.toggle('low', S.hunger < 20);
+    $('foodN').textContent = '🍖' + S.food; $('medN').textContent = S.meds ? '💊' + S.meds : '';
     const cb = G.combo; $('combo').classList.toggle('hide', cb.n < 2);
     if (cb.n >= 2) $('combo').innerHTML = 'серия ' + cb.n + '<small>×' + (1 + Math.min(cb.n, 20) / 20 * (C.comboMax - 1)).toFixed(2) + ' света</small>';
     const li = openName ? null : G.lookInfo();
-    $('look').innerHTML = !li ? '' : li.sp ? `<b class="g">${li.name}</b><br>нажми` :
+    $('look').innerHTML = !li ? '' : li.sp ? `<b class="g">${li.name}</b>` :
       `<b class="${li.rar == 2 ? 'a' : li.rar ? 'g' : ''}">${li.name}${li.rar ? ' — ' + D.RAR[li.rar].name : ''}</b> · <span class="${li.heavy ? 'h' : ''}">${li.w} кг</span> · ${D.fmt(li.v)} ✦`;
     const st = G.senseTarget(); $('sense').classList.toggle('hide', !st);
     if (st) { $('sense').firstChild.style.transform = `rotate(${-st.ang * 180 / Math.PI - 90}deg)`; $('sense').lastChild.textContent = ({ chest: 'сундук', bottle: 'письмо', star: 'звезда', part: 'деталь', door: 'дверь маяка', post: 'горн' }[st.kind]) + ' · ' + Math.round(st.d) + ' м'; }

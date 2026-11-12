@@ -10,7 +10,7 @@ const G = (() => {
   // ---------- сохранение ----------
   const fresh = () => ({
     light: 0, total: 0, lh: 0, up: {}, arts: [], letters: [], chests: [], bottles: [], quest: 0, pearls: 0,
-    heartDone: false, parts: [], posts: [], door: false, belt: [], crabRate: 0, last: Date.now(), runs: 0,
+    heartDone: false, parts: [], posts: [], door: false, belt: [], hunger: 100, food: 0, meds: 0, beam: { on: 1, sp: 1, hold: 0 }, calls: 0, crabRate: 0, last: Date.now(), runs: 0,
     st: { picked: 0, burned: 0, bought: 0, goldBurned: 0, bestCombo: 0, maxZone: 0, heartPicked: 0, time: 0 },
     opt: { snd: 1, q: touch ? 0 : 1, sens: 1 }
   });
@@ -58,19 +58,42 @@ const G = (() => {
   const zoneAt = r => r < D.ZONES[0].r1 ? 0 : r < D.ZONES[1].r1 ? 1 : r < D.ZONES[2].r1 ? 2 : 3;
 
   // ---------- сцена ----------
-  let renderer, scene, camera, sun, hemi, sky, wall, water, flame = [], embers = [], coals, fireGlow, fireLight, beam, sunBall;
+  let renderer, scene, camera, sun, hemi, sky, wall, water, flame = [], embers = [], coals, fireGlow, fireLight, beam, sunBall, lampMesh;
   let itemMat, rarMats, decorMat;
   const colliders = [{ x: 0, z: 0, r: 3.9 }, { x: HP.x, z: HP.z, r: 2.6, forge: true }];
   // горны: главный у маяка и дальние, которые игрок зажигает сам
   const forges = [{ x: HP.x, z: HP.z, y: HP.y, r: 2.2, h: 1.9, ty: 1.3, main: true }];
   function nearForge(x, z) { let b = forges[0], bd = 1e9; for (const f of forges) { const d = (f.x - x) ** 2 + (f.z - z) ** 2; if (d < bd) { bd = d; b = f; } } return b; }
   let sprF, flameT;
-  function addFlames(bx, by, bz, n, R, sc) {
-    for (let i = 0; i < n; i++) {
-      const a = i * 2.39996, r = Math.sqrt(i / n) * R, c = 1 - r / R, sp = sprF(flameT, true); sp.center.set(.5, .06);
-      flame.push({ s: sp, bx, by, bz, sc, x: Math.cos(a) * r, z: Math.sin(a) * r, h: 1.3 + c * 1.5 + Math.random() * .5, w: .85 + c * .5 + Math.random() * .3, ph: Math.random() * 6, sp: 5 + Math.random() * 5 });
-    }
+  function flameMat(seed) {
+    return new T.ShaderMaterial({ transparent: true, depthWrite: false, side: T.DoubleSide, fog: false,
+      uniforms: { t: { value: 0 }, seed: { value: seed }, pw: { value: 1 } },
+      vertexShader: `uniform float t, seed; varying vec2 vUv; varying float ang;
+        void main(){ vUv = uv; ang = atan(position.z, position.x); vec3 p = position; float k = uv.y*uv.y;
+          p.x += sin(t*3.1 + seed*5. + p.y*1.7)*.16*k; p.z += cos(t*2.6 + seed*3. + p.y*1.3)*.16*k;
+          gl_Position = projectionMatrix*modelViewMatrix*vec4(p, 1.); }`,
+      fragmentShader: `uniform float t, seed, pw; varying vec2 vUv; varying float ang;
+        float hs(vec3 p){ return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+        float ns(vec3 p){ vec3 i = floor(p), f = fract(p); f = f*f*(3.-2.*f);
+          return mix(mix(mix(hs(i), hs(i+vec3(1,0,0)), f.x), mix(hs(i+vec3(0,1,0)), hs(i+vec3(1,1,0)), f.x), f.y),
+                     mix(mix(hs(i+vec3(0,0,1)), hs(i+vec3(1,0,1)), f.x), mix(hs(i+vec3(0,1,1)), hs(i+vec3(1,1,1)), f.x), f.y), f.z); }
+        void main(){ float y = vUv.y;
+          vec3 q = vec3(cos(ang)*1.6, sin(ang)*1.6, y*2.6 - t*2.1) + seed*9.;
+          float n = ns(q)*.6 + ns(q*2.1 + 3.)*.28 + ns(q*4.3 + 9.)*.12;
+          float f = n*1.5 + (1. - y)*1.15 - .95 - y*y*.55 + (pw - 1.)*.35;
+          float a = smoothstep(0., .22, f) * smoothstep(0., .06, y) * (1. - smoothstep(.85, 1., y));
+          vec3 col = mix(vec3(.85,.13,.02), vec3(1.,.42,.04), smoothstep(0., .3, f));
+          col = mix(col, vec3(1.,.74,.2), smoothstep(.25, .6, f));
+          col = mix(col, vec3(1.,.96,.72), smoothstep(.6, 1.05, f));
+          gl_FragColor = vec4(col, a*.93); }` });
   }
+  function addFlames(bx, by, bz, n, R, sc) {           // пламя: три вложенные оболочки с бегущим шумом
+    [[1.12, .16, 2.5], [.78, .1, 3.1], [.44, .04, 3.6]].forEach((d, i) => {
+      const g = new T.CylinderGeometry(d[1] * R, d[0] * R, d[2], 28, 10, true); g.translate(0, d[2] / 2, 0);
+      const m = new T.Mesh(g, flameMat(Math.random() * 10 + i)); m.position.set(bx, by, bz); m.renderOrder = 6 + i; m.userData.sc = sc; scene.add(m); flame.push(m);
+    });
+  }
+
   const geo = {}, meshes = {}, inst = {};
   const cells = new Map();
   const specials = [], crabs = [], dyn = [], dead = [];
@@ -100,7 +123,7 @@ const G = (() => {
     const atlas = M.atlas(), mk = () => new T.MeshPhongMaterial({ vertexColors: true, map: atlas, shininess: 28, specular: 0x2a2a2a });
     itemMat = mk(); decorMat = mk(); decorMat.shininess = 8; decorMat.specular.set(0x111111);
     rarMats = D.RAR.map((r, i) => { const m = mk(); m.color.setRGB(...r.color); if (i) { m.shininess = 90; m.specular.set(i == 1 ? 0xffe9a0 : 0xd0a0ff); } return m; });
-    buildSky(); buildTerrain(); buildLighthouse(); buildDecor(); buildItems(); buildSpecials(); buildPosts(); buildFx(); buildHands(); for (let i = 0; i + 1 < S.belt.length; i++) addSeg(i);
+    buildSky(); buildTerrain(); buildLighthouse(); buildDecor(); buildItems(); buildSpecials(); buildPosts(); buildFx(); buildHands(); buildTop(); buildTornado(); for (let i = 0; i + 1 < S.belt.length; i++) addSeg(i);
     wallR = C.lit; syncCrabs();
     P.yaw = Math.atan2(-(HP.x - P.x), -(HP.z - P.z)) - .5;
     resize(); window.addEventListener('resize', resize);
@@ -116,23 +139,32 @@ const G = (() => {
 
   // ---------- небо, земля ----------
   function buildSky() {
-    sky = new T.Mesh(new T.SphereGeometry(700, 24, 12), new T.ShaderMaterial({
+    sky = new T.Mesh(new T.SphereGeometry(700, 32, 16), new T.ShaderMaterial({
       side: T.BackSide, depthWrite: false, fog: false,
-      uniforms: { top: { value: new T.Color() }, hor: { value: new T.Color() } },
-      vertexShader: 'varying float h; void main(){ h = normalize(position).y; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }',
-      fragmentShader: 'uniform vec3 top; uniform vec3 hor; varying float h; void main(){ float t = pow(clamp(h*1.5,0.,1.),.6); gl_FragColor = vec4(pow(mix(hor,top,t),vec3(.4545)),1.); }'
+      uniforms: { top: { value: new T.Color() }, hor: { value: new T.Color() }, sunCol: { value: new T.Color() }, sunDir: { value: new V3(0, 1, 0) }, t: { value: 0 }, storm: { value: 0 } },
+      vertexShader: 'varying vec3 d; void main(){ d = position; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }',
+      fragmentShader: `uniform vec3 top, hor, sunCol, sunDir; uniform float t, storm; varying vec3 d;
+        float hs(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        float ns(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f);
+          return mix(mix(hs(i), hs(i+vec2(1,0)), f.x), mix(hs(i+vec2(0,1)), hs(i+vec2(1,1)), f.x), f.y); }
+        float fbm(vec2 p){ float a = .5, v = 0.; for(int i=0;i<5;i++){ v += a*ns(p); p = p*2.03 + 7.3; a *= .5; } return v; }
+        void main(){ vec3 n = normalize(d); float h = max(n.y, 0.);
+          vec3 col = mix(hor, top, pow(clamp(h*1.4, 0., 1.), .55));
+          float s = max(dot(n, sunDir), 0.);
+          col += sunCol * (pow(s, 900.)*6. + pow(s, 60.)*.5 + pow(s, 6.)*.22);
+          vec2 uv = n.xz / (n.y + .14);
+          float c = fbm(uv*.9 + vec2(t*.012, t*.005)), c2 = fbm(uv*2.3 - vec2(t*.02, 0.));
+          float cov = mix(.44, .26, storm);
+          float cl = smoothstep(cov, cov + .28, c*.75 + c2*.25) * smoothstep(0., .22, n.y);
+          vec3 lit = mix(hor, vec3(1.), .62) + sunCol*pow(s, 4.)*.5;
+          vec3 shade = mix(hor*.55, top*.5, .5);
+          vec3 cc = mix(lit, shade, smoothstep(.45, .9, c2*.6 + c*.5));
+          cc = mix(cc, vec3(.13,.14,.17), storm*.6);
+          col = mix(col, cc, cl*.92);
+          col = mix(col, hor, pow(1. - h, 14.)*.8);
+          gl_FragColor = vec4(pow(col, vec3(.4545)), 1.); }`
     }));
     scene.add(sky);
-    sunBall = new T.Mesh(new T.CircleGeometry(26, 20), new T.MeshBasicMaterial({ color: 0xfff6dc, fog: false }));
-    scene.add(sunBall);
-    const r = rng(11), parts = [];
-    for (let i = 0; i < 26; i++) {
-      const a = r() * 6.283, d = 200 + r() * 320, s = 14 + r() * 26;
-      for (let k = 0; k < 3; k++) parts.push(M.P(M.sph(1, 9, 6), 0xffffff,
-        [Math.cos(a) * d + (k - 1) * s * .9, 70 + r() * 70 + (k == 1 ? s * .18 : 0), Math.sin(a) * d], [r() * 3, r() * 3, 0], [s * (k == 1 ? 1 : .7), s * .32, s * .6]));
-    }
-    const cl = new T.Mesh(M.merge(parts, false), new T.MeshBasicMaterial({ vertexColors: true, fog: false }));
-    scene.add(cl); sky.userData.clouds = cl;
   }
   function buildTerrain() {
     const N = S.opt.q ? 180 : 120, g = new T.PlaneGeometry(520, 520, N, N); g.rotateX(-Math.PI / 2);
@@ -143,7 +175,7 @@ const G = (() => {
       col.copy(A).lerp(B, noise(x * .08, z * .08));
       col.lerp(W, sstep(.2, -1.6, y + r * .028) * .7);          // сырые низины
       col.lerp(Dp, sstep(70, 160, r) * .45);                     // к бездне дно холоднее
-      c[i * 3] = col.r; c[i * 3 + 1] = col.g; c[i * 3 + 2] = col.b; uv.setXY(i, x / 5, z / 5);
+      c[i * 3] = col.r; c[i * 3 + 1] = col.g; c[i * 3 + 2] = col.b; uv.setXY(i, x / 9, z / 9);
     }
     g.setAttribute('color', new T.BufferAttribute(c, 3)); g.computeVertexNormals();
     const m = new T.Mesh(g, new T.MeshLambertMaterial({ vertexColors: true, map: M.sandTex() })); m.receiveShadow = true; scene.add(m);
@@ -163,10 +195,10 @@ const G = (() => {
     const parts = [], Pp = M.P, W = M.WOOD, Mt = M.METAL;
     parts.push(Pp(M.cyl(12, 12.6, 1.2, 28), 0xb9b09c, [0, .08, 0]));                     // пирс
     for (let i = 0; i < 5; i++) parts.push(Pp(M.cyl(3.3 - i * .22, 3.52 - i * .22, 4.4, 24), i % 2 ? 0xd9482f : 0xf4efe2, [0, 2.8 + i * 4.4, 0]));
-    parts.push(Pp(M.cyl(3.5, 3.0, .5, 24), 0x4a4f58, [0, 22.9, 0], 0, 1, Mt));           // галерея
-    parts.push(Pp(M.tor(3.4, .06, 5, 24), 0x30343a, [0, 24, 0], [Math.PI / 2, 0, 0], 1, Mt));
-    for (let i = 0; i < 12; i++) parts.push(Pp(M.cyl(.04, .04, .9, 5), 0x30343a, [Math.cos(i * .5236) * 3.4, 23.55, Math.sin(i * .5236) * 3.4], 0, 1, Mt));
-    parts.push(Pp(M.cyl(1.7, 1.7, 2.6, 12, true), 0x3d4650, [0, 24.4, 0], 0, 1, Mt));
+    parts.push(Pp(M.cyl(4.6, 3.4, .5, 28), 0x4a4f58, [0, 22.9, 0], 0, 1, Mt));           // галерея
+    parts.push(Pp(M.tor(4.45, .045, 5, 28), 0x30343a, [0, 24.0, 0], [Math.PI / 2, 0, 0], 1, Mt)); parts.push(Pp(M.tor(4.45, .04, 5, 28), 0x30343a, [0, 23.7, 0], [Math.PI / 2, 0, 0], 1, Mt));
+    for (let i = 0; i < 18; i++) parts.push(Pp(M.cyl(.035, .035, .9, 5), 0x30343a, [Math.cos(i * .349) * 4.45, 23.58, Math.sin(i * .349) * 4.45], 0, 1, Mt));
+    parts.push(Pp(M.cyl(1.7, 1.7, 2.6, 16), 0x3d4650, [0, 24.4, 0], 0, 1, Mt));
     parts.push(Pp(M.cone(2.4, 2.2, 16), 0xd9482f, [0, 26.8, 0], 0, 1, Mt));
     parts.push(Pp(M.sph(.3, 8, 6), 0xe8b85a, [0, 28, 0], 0, 1, Mt));
     parts.push(Pp(M.box(1.3, 2.3, .3), 0x6a4830, [0, 1.75, 3.45], 0, 1, W));              // дверь
@@ -181,7 +213,7 @@ const G = (() => {
     const m = new T.Mesh(M.merge(parts), decorMat); m.castShadow = m.receiveShadow = true; scene.add(m);
     coals = new T.Mesh(new T.CircleGeometry(1.5, 20), new T.MeshBasicMaterial({ map: M.coalTex(), fog: false, toneMapped: false }));
     coals.rotation.x = -Math.PI / 2; coals.position.set(HP.x, HP.y + .56, HP.z); scene.add(coals);
-    const lamp = new T.Mesh(M.sph(1.3, 12, 8), new T.MeshBasicMaterial({ color: 0xfff3c0, fog: false })); lamp.position.y = 24.4; scene.add(lamp);
+    lampMesh = new T.Mesh(M.sph(1.0, 12, 8), new T.MeshBasicMaterial({ color: 0xfff3c0, fog: false })); lampMesh.position.y = 25.3; scene.add(lampMesh);
     beam = new T.Group(); beam.position.y = 24.4; scene.add(beam);
     const bm = new T.MeshBasicMaterial({ color: 0xfff0b8, transparent: true, opacity: .1, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide, fog: false });
     for (const s of [1, -1]) { const b = new T.Mesh(new T.ConeGeometry(9, 170, 14, 1, true), bm); b.rotation.z = s * Math.PI / 2; b.position.x = s * 85; beam.add(b); }
@@ -189,19 +221,14 @@ const G = (() => {
     // живой огонь: языки пламени и искры из спрайтов
     const ft = M.flameTex(), gt = glowTex();
     const spr = (tex, norm) => { const sp = new T.Sprite(new T.SpriteMaterial({ map: tex, blending: norm ? T.NormalBlending : T.AdditiveBlending, depthWrite: false, transparent: true, fog: false, toneMapped: false })); sp.renderOrder = 6; scene.add(sp); return sp; };
-    sprF = spr; flameT = ft; addFlames(HP.x, HP.y + .72, HP.z, S.opt.q ? 34 : 24, 1.3, 1);
+    addFlames(HP.x, HP.y + .62, HP.z, 0, 1.35, 1);
     for (let i = 0; i < 22; i++) embers.push({ s: spr(gt), life: Math.random() * 2, max: 2, x: 0, z: 0, vy: 1, ph: Math.random() * 6 });
     fireGlow = spr(gt); fireGlow.material.color.set(0xff8a30); fireGlow.material.color.set(0x3a1a05); fireGlow.position.set(HP.x, HP.y + 1.5, HP.z);
     fireLight = new T.PointLight(0xffa050, 30, 28, 1.6); fireLight.position.set(HP.x, HP.y + 2, HP.z); scene.add(fireLight);
   }
   function updFire(dt) {
     const pw = (.9 + S.lh * .04) * (1 + fireKick * .3);
-    for (const f of flame) {
-      const fl = .78 + .2 * Math.sin(time * f.sp + f.ph) + .12 * Math.sin(time * f.sp * 2.7 + f.ph * 2);
-      f.s.scale.set(f.w * pw * f.sc * (.9 + .12 * Math.sin(time * f.sp * 1.3 + f.ph)), f.h * pw * f.sc * fl, 1);
-      f.s.position.set(f.bx + f.x + Math.sin(time * 2.2 + f.ph) * .07, f.by, f.bz + f.z + Math.cos(time * 1.9 + f.ph) * .07);
-      f.s.material.opacity = .82 + .15 * Math.sin(time * f.sp * 1.7 + f.ph);
-    }
+    for (const f of flame) { const u = f.material.uniforms; u.t.value = time; u.pw.value = pw; f.scale.set(1, f.userData.sc * (.9 + pw * .12), 1); }
     for (const e of embers) {
       e.life -= dt;
       if (e.life <= 0) { const a = Math.random() * 6.283, r = Math.random() * 1.2; e.x = Math.cos(a) * r; e.z = Math.sin(a) * r; e.max = e.life = 1.2 + Math.random() * 1.6; e.vy = 1.6 + Math.random() * 1.8; e.teal = Math.random() < .25; }
@@ -220,23 +247,16 @@ const G = (() => {
   function buildDecor() {
     const parts = [], Pp = M.P, r = rng(77);
     const at = (a, d) => [Math.cos(a) * d, Math.sin(a) * d];
-    function ship(a, d, len, rot) {
-      const [x, z] = at(a, d), y = groundH(x, z), g = new T.BoxGeometry(5, 4.2, len, 2, 2, 8), p = g.attributes.position;
-      for (let i = 0; i < p.count; i++) {
-        const zz = p.getZ(i) / (len / 2), k = (1 - Math.pow(Math.abs(zz), 2.4) * .85) * (p.getY(i) < 0 ? .45 : 1);
-        p.setX(i, p.getX(i) * k); if (p.getY(i) < 0) p.setY(i, p.getY(i) + Math.abs(zz) * 1.2);
-      }
-      g.computeVertexNormals(); const roll = .32 + r() * .2;
-      parts.push(Pp(g, 0x6a4830, [x, y + 1.6, z], [0, rot, roll], 1, M.WOOD));
-      parts.push(Pp(M.box(3.6, .2, len * .8), 0x9a7448, [x, y + 3.5, z], [0, rot, roll], 1, M.WOOD));
-      for (const k of [-.25, .2]) {
-        const mx = x + Math.sin(rot) * len * k, mz = z + Math.cos(rot) * len * k;
-        parts.push(Pp(M.cyl(.22, .3, 11, 8), 0x7d5a3a, [mx - 1.6, y + 7.5, mz], [0, 0, roll + .05], 1, M.WOOD));
-        parts.push(Pp(M.box(5, .25, .25), 0x7d5a3a, [mx - 2.6, y + 10, mz], [0, rot + 1.57, roll]));
-      }
-      for (const k of [-.3, 0, .3]) colliders.push({ x: x + Math.sin(rot) * len * k, z: z + Math.cos(rot) * len * k, r: 2.6 });
+    function ship(a, d, len, rot, model, sink, roll) {       // корабли — готовые модели, полузасыпанные песком
+      const [x, z] = at(a, d), y = groundH(x, z), g = M.asset(model, len), m = new T.Mesh(g, decorMat);
+      m.position.set(x, y - (sink || 0) * g.userData.dims[1], z); m.rotation.set(0, rot, roll == null ? .22 + r() * .25 : roll); m.castShadow = m.receiveShadow = true; scene.add(m);
+      const n = Math.max(1, Math.round(len / 7)), w = Math.max(1.4, g.userData.dims[0] * .5);
+      for (let k = 0; k < n; k++) { const t = n === 1 ? 0 : (k / (n - 1) - .5) * .8; colliders.push({ x: x + Math.sin(rot) * len * t, z: z + Math.cos(rot) * len * t, r: w }); }
     }
-    ship(.5, 56, 22, .7); ship(2.4, 64, 26, 2.2); ship(4.3, 60, 20, 5.1); ship(5.6, 70, 24, 1.3); ship(3.4, 50, 16, 0.2);
+    ship(.5, 56, 30, .7, 'Ship_Sail', .06); ship(2.4, 64, 22, 2.2, 'Ship_Viking', .08); ship(4.3, 60, 34, 5.1, 'Ship_Sail', .1); ship(5.6, 70, 20, 1.3, 'Ship_Viking', .05);
+    ship(3.4, 50, 14, .2, 'Ship_BoatSail', .04); ship(1.5, 30, 6, 2.6, 'Ship_Lifeboat', .15, .5); ship(4.9, 27, 5, .9, 'Ship_Boat', .1, .4); ship(.1, 36, 6, 4.2, 'Ship_Lifeboat', .2, -.45);
+    ship(2.05, 108, 95, .55, 'Ship_Cruise', .12, .16);       // огромный лайнер у бездны
+    ship(.15, 98, 26, 3.3, 'Ship_Sail', .1); ship(5.0, 128, 24, 1.9, 'Ship_Viking', .1); ship(3.0, 86, 12, 5.5, 'Ship_BoatSail', .05);
     function whale(a, d, rot) {
       const [x, z] = at(a, d);
       for (let i = 0; i < 11; i++) {
@@ -259,9 +279,9 @@ const G = (() => {
       const a = i * 1.57 + .6, [x, z] = at(a, 138), y = groundH(x, z);
       parts.push(Pp(M.tor(7, 1.1, 8, 16, Math.PI), 0x6f9096, [x, y, z], [0, -a, 0]));
     }
-    for (let i = 0; i < 40; i++) {                                   // дальние скалы за мглой
-      const a = i / 40 * 6.283 + r() * .1, d = 175 + r() * 110, [x, z] = at(a, d), h = 20 + r() * 60;
-      parts.push(Pp(M.cone(10 + r() * 16, h, 9), 0x6b6f86, [x, groundH(x, z) + h / 2 - 4, z], [0, r() * 6, r() * .2 - .1]));
+    if (M.has('Rock_1')) for (let i = 0; i < 34; i++) {              // дальние скалы за мглой
+      const a = i / 34 * 6.283 + r() * .12, d = 180 + r() * 110, [x, z] = at(a, d), h = 22 + r() * 45, g = M.asset(['Rock_1', 'Rock_2', 'Rock_3'][i % 3], h * (i % 3 ? 1.5 : 1));
+      const m = new T.Mesh(g, decorMat); m.position.set(x, groundH(x, z) - 3, z); m.rotation.y = r() * 6; scene.add(m);
     }
     const m = new T.Mesh(M.merge(parts), decorMat); m.castShadow = m.receiveShadow = true; scene.add(m);
     // россыпь: камни, кораллы, водоросли
@@ -274,7 +294,11 @@ const G = (() => {
       }
       im.castShadow = im.receiveShadow = true; im.frustumCulled = false; scene.add(im);
     };
-    geo.rock = M.rock(); scatter(geo.rock, 260, 16, 260, .4, 3.2, 5);
+    geo.rock = M.rock();
+    if (M.has('Rock_1')) { ['Rock_1', 'Rock_2', 'Rock_3'].forEach((n, i) => scatter(M.asset(n, 1.6), 90, 16, 260, .5, 3.4, 50 + i));
+      scatter(M.asset('Tree_Dead1', 5), S.opt.q ? 45 : 20, 30, 150, .7, 1.5, 61); scatter(M.asset('Tree_Dead2', 5), S.opt.q ? 45 : 20, 30, 150, .7, 1.6, 62);
+      scatter(M.asset('Deco_Log', 2.4), 80, 16, 150, .6, 1.6, 63); }
+    else scatter(geo.rock, 260, 16, 260, .4, 3.2, 5);
     scatter(M.kelp(), S.opt.q ? 500 : 250, 15, 80, .7, 1.5, 6);
     scatter(M.coral(), S.opt.q ? 600 : 300, 74, 158, .8, 2.4, 7);
   }
@@ -285,7 +309,7 @@ const G = (() => {
   function rollRar(r) { const v = r(); return v < .004 ? 2 : v < .03 ? 1 : 0; }
   function buildItems() {
     const r = rng(2026 + S.runs * 13), counts = {}, list = [];
-    const dens = S.opt.q ? 1 : .6;
+    const dens = +(new URLSearchParams(location.search).get('dens')) || (S.opt.q ? 1 : .45);
     D.ZONES.forEach((Z, zi) => {
       const types = Object.keys(Z.w), tot = types.reduce((s, t) => s + Z.w[t], 0);
       let n = Math.round(Z.count * dens), guard = n * 12;
@@ -300,7 +324,7 @@ const G = (() => {
       }
     });
     for (const t in D.ITEMS) {
-      geo[t] = M.items[t]();
+      const I = D.ITEMS[t]; geo[t] = I.m && M.has(I.m) && (S.opt.q || !M.items[t]) ? M.asset(I.m, I.size * 1.9) : M.items[t]();
       const cap = t === 'heart' ? 2 : (counts[t] || 0) + 260;
       const m = new T.InstancedMesh(geo[t], itemMat, cap); m.count = 0; m.frustumCulled = false; m.castShadow = m.receiveShadow = true;
       m.setColorAt(0, col.set(1, 1, 1)); m.userData.cap = cap; scene.add(m); meshes[t] = m; inst[t] = [];
@@ -356,7 +380,7 @@ const G = (() => {
 
   // ---------- сундуки, письма, звёзды ----------
   function buildSpecials() {
-    const r = rng(404), cg = M.chest(), lg = M.letter();
+    const r = rng(404), cg = M.has('Chest') ? M.asset('Chest', 1.1) : M.chest(), lg = M.letter();
     const place = (zi) => {
       for (let n = 0; n < 60; n++) {
         const Z = D.ZONES[zi], a = r() * 6.283, d = lerp(Z.r0 + 4, Z.r1 - 3, r()), x = Math.cos(a) * d, z = Math.sin(a) * d;
@@ -368,9 +392,10 @@ const G = (() => {
     [4, 5, 5, 6].forEach((n, zi) => { for (let i = 0; i < n; i++, id++) { const [x, z] = place(zi); if (!S.chests.includes(id)) addSpecial('chest', id, x, z, cg); } });
     id = 0;
     [3, 3, 3, 3].forEach((n, zi) => { for (let i = 0; i < n; i++, id++) { const [x, z] = place(zi); if (!S.bottles.includes(id)) addSpecial('bottle', id, x, z, lg); } });
-    const pg = M.part();                                   // спрятанные детали: 3 обломка ключа и по 3 детали горна на зону
-    for (id = 0; id < 12; id++) { const [x, z] = place(Math.floor(id / 3)); if (!S.parts.includes(id)) addSpecial('part', id, x, z, pg); }
-    if (S.door) openDoor(); else { const d = addSpecial('door', 0, 0, 4.3, M.box(.01, .01, .01)); d.mesh.visible = false; d.y = 1.5; d.glow.position.set(0, 1.9, 3.9); d.glow.scale.setScalar(2.2); }
+    let keyG; const pg = M.part();                                   // спрятанные детали: 3 обломка ключа и по 3 детали горна на зону
+    for (id = 0; id < 12; id++) { const [x, z] = place(Math.floor(id / 3)); if (!S.parts.includes(id)) addSpecial('part', id, x, z, id < 3 && M.has('Key') ? (keyG = keyG || M.asset('Key', .8)) : pg); }
+    if (S.door) openDoor();
+    { const d = addSpecial('door', 0, 0, 4.3, M.box(.01, .01, .01)); d.mesh.visible = false; d.y = 1.5; d.glow.position.set(0, 1.9, 3.9); d.glow.scale.setScalar(2.2); }
   }
   function openDoor() {
     const m = new T.Mesh(M.box(1.1, 2.2, .34), new T.MeshBasicMaterial({ color: 0x1a0c04 })); m.position.set(0, 1.75, 3.46); scene.add(m);
@@ -397,7 +422,7 @@ const G = (() => {
   }
   function lightPost(p) {
     forges.push({ x: p.x, z: p.z, y: p.y, r: 1.7, h: 1.7, ty: 1.0 });
-    addFlames(p.x, p.y + .5, p.z, S.opt.q ? 14 : 10, .85, .7);
+    addFlames(p.x, p.y + .45, p.z, 0, .85, .62);
     const c = new T.Mesh(new T.CircleGeometry(.95, 14), coals.material); c.rotation.x = -Math.PI / 2; c.position.set(p.x, p.y + .42, p.z); scene.add(c);
     if (S.opt.q) { const l = new T.PointLight(0xffa050, 14, 18, 1.6); l.position.set(p.x, p.y + 1.8, p.z); scene.add(l); }
   }
@@ -405,9 +430,10 @@ const G = (() => {
   function useSpecial(s) {                                  // дверь маяка и дальние горны
     if (s.kind === 'door') {
       const n = partsIn(0);
-      if (n < 3) { UI.toast('Дверь заперта. Обломки ключа спрятаны на Отмели: найдено ' + n + ' из 3'); A.play('no'); return; }
-      S.door = true; calc(); dropSpecial(s); openDoor(); A.play('level'); burst(0, 2, 4.2, 60, 0xffd080); save();
-      UI.popup('🗝️', 'Дверь маяка открыта', 'Внутри — комната прежнего хранителя. На столе карта дна с отметками и запасная линза, завёрнутая в парусину. Ты ставишь её в фонарь.', 'Линза хранителя: весь свет ×2 · Карта: стрелка всегда ведёт к ближайшей находке');
+      if (n < 3 && !S.door) { UI.toast('Дверь заперта. Обломки ключа спрятаны на Отмели: найдено ' + n + ' из 3'); A.play('no'); return; }
+      if (S.door) { goTop(); return; }
+      S.door = true; calc(); openDoor(); A.play('level'); burst(0, 2, 4.2, 60, 0xffd080); save();
+      UI.popup('🗝️', 'Дверь маяка открыта', 'Внутри — комната прежнего хранителя. На столе карта дна с отметками и запасная линза, завёрнутая в парусину. Ты ставишь её в фонарь.', 'Линза хранителя: весь свет ×2 · Карта: стрелка ведёт к ближайшей находке · Нажми на дверь ещё раз — поднимешься наверх, к фонарю');
     } else {
       const n = partsIn(s.id);
       if (n < 3) { UI.toast('Потухший горн. Не хватает деталей: найдено ' + n + ' из 3 — ищи в этой зоне'); A.play('no'); return; }
@@ -417,7 +443,7 @@ const G = (() => {
   }
   function addSpecial(kind, id, x, z, g, extra) {
     const mesh = new T.Mesh(g, kind === 'star' ? new T.MeshBasicMaterial({ vertexColors: true }) : decorMat);
-    const c = cellAt(x, z), y = groundH(x, z) + (c ? c.h : 0) + (kind === 'chest' ? 0 : .45);
+    const c = cellAt(x, z), y = groundH(x, z) + (c ? c.h : 0) + (kind === 'chest' ? (g.userData.dims ? g.userData.dims[1] * .45 : 0) : .45);
     mesh.position.set(x, y, z); mesh.rotation.y = x * 7; if (kind === 'bottle') mesh.rotation.z = .5; mesh.castShadow = true; scene.add(mesh);
     const glow = new T.Sprite(new T.SpriteMaterial({ map: glowTex(), color: kind === 'chest' ? 0xffd070 : kind === 'bottle' ? 0x9ff0e0 : kind === 'part' ? 0xff9a50 : kind === 'door' || kind === 'post' ? 0xffc070 : 0xfff0a0, blending: T.AdditiveBlending, depthWrite: false, transparent: true, fog: false }));
     glow.scale.setScalar(kind === 'star' ? 7 : 3.2); glow.position.set(x, y + .5, z); scene.add(glow);
@@ -471,6 +497,147 @@ const G = (() => {
     vacMesh = new T.Mesh(M.merge([M.P(M.cone(.16, .5, 14), 0xf3c3a2, [0, 0, 0], [Math.PI / 2, 0, 0]), M.P(M.cyl(.06, .09, .3, 10), 0xc98f3a, [0, 0, .35], [Math.PI / 2, 0, 0]),
       M.P(M.tor(.16, .03, 6, 14), 0xe8b85a, [0, 0, -.25])]), decorMat);
     vacMesh.position.set(.42, -.34, -.75); vacMesh.scale.setScalar(.6); vacMesh.visible = false; camera.add(vacMesh);
+  }
+
+  // ---------- еда и лекарства ----------
+  let hungryT = -99, shake = 0, boardT = 0;
+  function collect(t) {
+    const I = D.ITEMS[t];
+    if (I.med) { S.meds += I.med; UI.toast('💊 ' + I.name + ' — в аптечку (всего ' + S.meds + ')'); A.play('pick'); return; }
+    if (S.hunger <= 100 - I.food * .6) { S.hunger = Math.min(100, S.hunger + I.food); UI.toast('🍖 Съел: ' + I.name + ' (+' + I.food + ' сытости)'); }
+    else { S.food++; UI.toast('🍖 ' + I.name + ' — в припасы (' + S.food + ')'); }
+    A.play('pop');
+  }
+
+  // ---------- верх маяка: галерея с приборами ----------
+  const gadgets = [], boards = [];
+  function goTop() { S.st.climbed = 1; P.top = true; P.x = 0; P.z = 3.2; P.yaw = Math.PI; P.pitch = -.05; boardT = 0; A.play('art'); UI.banner('Фонарная галерея', 'Осмотрись. На стене — журнал, пульт фонаря, телефон и радио'); }
+  function goDown() { P.top = false; P.x = 0; P.z = 6.2; P.yaw = Math.PI; P.y = HP.y; A.play('thud'); }
+  function buildTop() {
+    const Y = 23.15, R = 1.74, at = (th, y, r) => [Math.sin(th) * (r || R), y, Math.cos(th) * (r || R)];
+    const put = (g, th, y, r, mat) => { const m = new T.Mesh(g, mat || decorMat), p = at(th, y, r); m.position.set(...p); m.rotation.y = th; scene.add(m); return m; };
+    const brass = 0xc98f3a, P_ = M.P;
+    const board = (th, title) => {
+      const c = document.createElement('canvas'); c.width = 512; c.height = 360; const tex = new T.CanvasTexture(c); tex.colorSpace = T.SRGBColorSpace;
+      put(M.merge([P_(M.box(1.86, 1.36, .06), brass)], false), th, Y + 1.6, R + .02);
+      put(new T.PlaneGeometry(1.72, 1.22), th, Y + 1.6, R + .06, new T.MeshBasicMaterial({ map: tex, fog: false }));
+      boards.push({ c, tex, title });
+    };
+    board(0, 'ЖУРНАЛ МАЯКА'); board(Math.PI / 2, 'ЧТО СДЕЛАТЬ');
+    // пульт фонаря
+    const th = Math.PI, cp = at(th, Y + .55, R + .32);
+    put(M.merge([P_(M.box(1.7, 1.1, .6), 0x5a3d28, 0, 0, 1, M.WOOD), P_(M.box(1.76, .06, .66), brass, [0, .56, 0]), P_(M.box(1.5, .5, .04), 0x24343f, [0, .1, .31])], false), th, Y + .55, R + .32);
+    const knob = (dx, color, name, use) => {
+      const m = new T.Mesh(M.sph(.085, 10, 8), new T.MeshBasicMaterial({ color })); m.position.set(cp[0] + Math.cos(th) * dx, Y + 1.2, cp[2] - Math.sin(th) * dx); scene.add(m);
+      const g = { x: m.position.x, y: m.position.y, z: m.position.z, r: .3, m, use: () => { use(); save(); }, get name() { return name(); } }; gadgets.push(g); return g;
+    };
+    knob(-.55, 0x58e06a, () => 'Фонарь: ' + (S.beam.on ? 'горит' : 'выключен') + ' — нажми', () => { S.beam.on = S.beam.on ? 0 : 1; UI.toast(S.beam.on ? 'Фонарь зажжён' : 'Фонарь погашен'); });
+    knob(0, 0xffc040, () => 'Скорость луча: ×' + S.beam.sp + ' — нажми', () => { S.beam.sp = { .5: 1, 1: 2, 2: 4, 4: .5 }[S.beam.sp] || 1; UI.toast('Скорость луча ×' + S.beam.sp); });
+    knob(.55, 0xff5a4a, () => (S.beam.hold ? 'Луч остановлен и идёт за взглядом' : 'Остановить луч') + ' — нажми', () => { S.beam.hold = S.beam.hold ? 0 : 1; UI.toast(S.beam.hold ? 'Луч остановлен: он светит туда, куда ты смотришь' : 'Луч снова вращается'); });
+    // телефон и радио
+    const th2 = -Math.PI / 2;
+    put(M.merge([P_(M.box(1.2, .06, .4), 0x5a3d28, 0, 0, 1, M.WOOD), P_(M.box(.06, .3, .3), brass, [-.5, -.16, 0]), P_(M.box(.06, .3, .3), brass, [.5, -.16, 0])], false), th2, Y + 1.15, R + .2);
+    const dev = (asset, size, dx, name, use, rot) => {
+      const p = at(th2, Y + 1.18 + size * .5, R + .2), x = p[0] + Math.cos(th2) * dx, z = p[2] - Math.sin(th2) * dx;
+      if (M.has(asset)) { const m = new T.Mesh(M.asset(asset, size), decorMat); m.position.set(x, p[1], z); m.rotation.y = th2 + (rot || 0); scene.add(m); }
+      gadgets.push({ x, y: p[1], z, r: .32, name, use });
+    };
+    dev('Phone', .42, -.3, 'Телефон — позвонить', () => {
+      S.calls++; A.play('ring'); UI.toast('Гудки…');
+      setTimeout(() => UI.toast(S.calls % 5 ? 'Никто не берёт трубку.' : 'Никто не берёт трубку… но в ней слышен шум моря.'), 4200);
+    });
+    dev('Radio', .46, .3, 'Радио — прогноз', () => {
+      const m = Math.max(0, Math.ceil(tor.next / 60));
+      UI.toast(tor.on ? 'Сквозь треск: «…смерч идёт ' + (tor.near ? 'прямо на маяк' : 'стороной') + '…»' : 'Сквозь помехи: «…смерч ожидается через ' + (m <= 1 ? 'минуту' : m + ' мин') + '…»');
+    }, Math.PI);
+    // люк вниз
+    const hp = at(2.3, Y + .05, 3.3), hm = new T.Mesh(M.merge([P_(M.box(1.1, .08, 1.1), 0x5a3d28, 0, 0, 1, M.WOOD), P_(M.tor(.14, .03, 5, 10), brass, [0, .06, .3], [Math.PI / 2, 0, 0], 1, M.METAL)], false), decorMat);
+    hm.position.set(...hp); hm.rotation.y = 2.3; scene.add(hm);
+    gadgets.push({ x: hp[0], y: Y + .1, z: hp[2], r: .7, name: 'Люк — спуститься вниз', use: goDown });
+  }
+  function drawBoards() {
+    const f = D.fmt, q = D.QUESTS, lines = [
+      [['Свет сейчас', f(S.light) + ' ✦'], ['Всего добыто', f(S.total) + ' ✦'], ['Сожжено находок', S.st.burned], ['Маяк', S.lh + ' / 8'],
+        ['Артефакты', S.arts.length + ' / ' + D.ARTS.length], ['Письма', S.letters.length + ' / ' + D.LETTERS.length], ['Крабы · лента', S.up.crab + ' · ' + beltSegs() * 10 + ' м'],
+        ['На дне', Math.floor(S.st.time / 60) + ' мин']],
+      [[q[S.quest] ? '▶ ' + q[S.quest][0] : 'Все задания выполнены', ''], [q[S.quest + 1] ? '· ' + q[S.quest + 1][0] : '', ''], [q[S.quest + 2] ? '· ' + q[S.quest + 2][0] : '', ''],
+        ['Дальние горны', S.posts.length + ' / 3'], ['Сытость', Math.round(S.hunger) + '%  припасы ' + S.food], ['Аптечка', S.meds + ' шт.'],
+        ['До маяка', S.lh < 8 ? f(Math.max(0, D.LH_COST[S.lh] - S.light)) + ' ✦' : 'горит в полную силу']]];
+    boards.forEach((b, i) => {
+      const x = b.c.getContext('2d'); x.fillStyle = '#0e1c2a'; x.fillRect(0, 0, 512, 360); x.strokeStyle = '#e8b85a'; x.lineWidth = 4; x.strokeRect(8, 8, 496, 344);
+      x.fillStyle = '#ffd66e'; x.font = '800 30px Rubik, sans-serif'; x.textAlign = 'center'; x.fillText(b.title, 256, 50);
+      x.font = '600 21px Rubik, sans-serif'; let y = 90;
+      for (const [k, v] of lines[i]) { if (!k) continue; x.textAlign = 'left'; x.fillStyle = '#d8e6ee';
+        const kk = String(k); x.fillText(kk.length > 40 ? kk.slice(0, 39) + '…' : kk, 28, y); x.textAlign = 'right'; x.fillStyle = '#7ff0e0'; x.fillText(String(v), 484, y); y += 33; }
+      b.tex.needsUpdate = true;
+    });
+  }
+
+  // ---------- торнадо ----------
+  const tor = { on: false, next: 150, x: 0, z: 0, orb: [] }; let torG, torMat, torDust, stormK = 0;
+  function buildTornado() {
+    const c = document.createElement('canvas'); c.width = 256; c.height = 64; const x = c.getContext('2d');
+    for (let i = 0; i < 90; i++) { x.strokeStyle = `rgba(255,255,255,${.15 + Math.random() * .5})`; x.lineWidth = 1 + Math.random() * 4; const y = Math.random() * 64, x0 = Math.random() * 256, l = 30 + Math.random() * 90;
+      for (const o of [-256, 0, 256]) { x.beginPath(); x.moveTo(x0 + o, y); x.lineTo(x0 + o + l, y + Math.random() * 6 - 3); x.stroke(); } }
+    const t = new T.CanvasTexture(c); t.wrapS = t.wrapT = T.RepeatWrapping; t.repeat.set(3, 1);
+    torMat = new T.MeshBasicMaterial({ map: t, color: 0xcdb78f, transparent: true, opacity: .6, side: T.DoubleSide, depthWrite: false });
+    torG = new T.Group(); torG.visible = false; scene.add(torG);
+    for (let k = 0; k < 18; k++) {
+      const r0 = 1.1 + Math.pow(k, 1.45) * .42, r1 = 1.1 + Math.pow(k + 1, 1.45) * .42;
+      const m = new T.Mesh(new T.CylinderGeometry(r1, r0, 3.6, 20, 1, true), torMat); m.position.y = k * 3.5 + 1.8; m.renderOrder = 7; torG.add(m);
+    }
+    torDust = new T.Sprite(new T.SpriteMaterial({ map: glowTex(), color: 0xcdb78f, transparent: true, opacity: .55, depthWrite: false })); torDust.scale.set(22, 9, 1); torDust.position.y = 3; torG.add(torDust);
+  }
+  function orbiter(info, fake) {
+    const m = new T.Mesh(geo[info.t], rarMats[info.rar]); scene.add(m);
+    return { m, info, fake, ang: Math.random() * 6.283, h: fake ? Math.random() * 30 : .5, vh: 3 + Math.random() * 4, w: 2.5 + Math.random() * 2.5, hmax: 12 + Math.random() * 22 };
+  }
+  function startTornado(near) {
+    if (tor.on) return;
+    if (near == null) near = S.lh >= 1 && Math.random() < .5;
+    let tx, tz, dir = Math.random() * 6.283, sp;
+    if (near) {
+      const a = Math.random() * 6.283, d = 9 + Math.random() * 14; tx = (P.top ? 0 : P.x) + Math.cos(a) * d; tz = (P.top ? 14 : P.z) + Math.sin(a) * d;
+      const r = Math.hypot(tx, tz) || 1, k = clamp(r, 22, Math.max(23, C.lit - 3)) / r; tx *= k; tz *= k; sp = 8; tor.dur = 21;
+    } else { const a = Math.random() * 6.283, r = Math.min(235, C.lit + 38 + Math.random() * 30); tx = Math.cos(a) * r; tz = Math.sin(a) * r; dir = a + Math.PI / 2; sp = 7; tor.dur = 27; }
+    tor.vx = Math.cos(dir) * sp; tor.vz = Math.sin(dir) * sp; tor.x = tx - tor.vx * tor.dur / 2; tor.z = tz - tor.vz * tor.dur / 2;
+    tor.on = true; tor.near = near; tor.t = 0; tor.grabT = 0; tor.warned = false; torG.visible = true;
+    const light = Object.keys(D.ITEMS).filter(t => D.ITEMS[t].w <= 9 && t !== 'heart');
+    for (let i = 0; i < 26; i++) tor.orb.push(orbiter({ t: light[Math.random() * light.length | 0], rar: 0, zone: 0 }, true));
+    UI.banner('Торнадо!', near ? 'Идёт прямо сюда — находки поднимет и разбросает' : 'Проходит вдалеке. Можно просто смотреть');
+    A.play('level');
+  }
+  function torRelease(o, cx, cz) {
+    const p = o.m.position, dx = p.x - cx, dz = p.z - cz, L = Math.hypot(dx, dz) || 1, sp = 7 + Math.random() * 9, out = 4 + Math.random() * 7;
+    scene.remove(o.m);
+    if (!o.fake) launch(o.info, p.x, p.y, p.z, 'hand', new V3(-dz / L * sp + dx / L * out, 2 + Math.random() * 4, dx / L * sp + dz / L * out));
+  }
+  function updTornado(dt) {
+    stormK = lerp(stormK, tor.on ? (tor.near ? .85 : .45) : 0, Math.min(1, dt * .6)); sky.material.uniforms.storm.value = stormK;
+    shake = Math.max(0, shake - dt * 2);
+    if (!tor.on) { if (S.st.burned >= 3) tor.next -= dt; if (tor.next <= 0) startTornado(); A.wind(0); return; }
+    tor.t += dt; tor.x += tor.vx * dt; tor.z += tor.vz * dt;
+    const k = Math.min(1, tor.t / 2.5, (tor.dur - tor.t) / 2.5), gy = groundH(tor.x, tor.z);
+    torG.position.set(tor.x, gy, tor.z); torG.scale.set(k, 1, k); torMat.opacity = .62 * k; torMat.map.offset.x -= dt * 1.4; torDust.material.opacity = .5 * k;
+    const sway = h => [Math.sin(time * 1.3 + h * .14) * h * .06, Math.cos(time * 1.1 + h * .12) * h * .06];
+    torG.children.forEach((m, i) => { if (m === torDust) return; const sw = sway(m.position.y); m.position.x = sw[0]; m.position.z = sw[1]; m.rotation.y += dt * (3.2 - i * .08); });
+    // поднимает находки
+    if ((tor.grabT -= dt) <= 0 && tor.orb.length < 96) {
+      tor.grabT = .05; let got = null;
+      nearItems(tor.x, tor.z, 6, it => { if (!got && it.t !== 'heart' && (it.x - tor.x) ** 2 + (it.z - tor.z) ** 2 < 30) got = it; });
+      if (got) { removeItem(got); const o = orbiter({ t: got.t, rar: got.rar, zone: got.zone }, false); o.m.position.set(got.x, got.y, got.z); tor.orb.push(o); }
+    }
+    for (let i = tor.orb.length - 1; i >= 0; i--) {
+      const o = tor.orb[i]; o.ang += o.w * dt; o.h += o.vh * dt; if (o.fake && o.h > 34) o.h = 0;
+      const sw = sway(o.h), rad = (1.4 + o.h * .4) * k;
+      o.m.position.set(tor.x + sw[0] + Math.cos(o.ang) * rad, gy + o.h + .5, tor.z + sw[1] + Math.sin(o.ang) * rad); o.m.rotation.x += dt * 5; o.m.rotation.z += dt * 3.3;
+      if ((!o.fake && o.h > o.hmax) || tor.t >= tor.dur) { torRelease(o, tor.x, tor.z); tor.orb.splice(i, 1); }
+    }
+    const pd = P.top ? 99 : Math.hypot(P.x - tor.x, P.z - tor.z);
+    A.wind(clamp(1 - pd / 70, .15, 1) * k);
+    if (pd < 12) { shake = Math.max(shake, (1 - pd / 12) * .12); const pull = (1 - pd / 12) * 3 * dt; P.x += (tor.x - P.x) / pd * pull; P.z += (tor.z - P.z) / pd * pull;
+      if (!tor.warned) { tor.warned = true; UI.toast('Торнадо совсем рядом — держись!'); } }
+    if (tor.t >= tor.dur) { tor.on = false; torG.visible = false; tor.next = 190 + Math.random() * 150; }
   }
 
   // ---------- лента: покупные секции по 10 м, везут находки в главный горн ----------
@@ -545,7 +712,7 @@ const G = (() => {
     }
   }
   function crabTarget() {
-    let best = null, bd = 1e9; const types = Object.keys(inst).filter(t => t !== 'heart' && inst[t].length && D.ITEMS[t].w <= C.crabW);
+    let best = null, bd = 1e9; const types = Object.keys(inst).filter(t => t !== 'heart' && inst[t].length && D.ITEMS[t].w <= C.crabW && !D.ITEMS[t].food && !D.ITEMS[t].med);
     if (!types.length) return null;
     for (let i = 0; i < 24; i++) {
       const L = inst[types[Math.random() * types.length | 0]], it = L[Math.random() * L.length | 0], d = Math.hypot(it.x, it.z);
@@ -594,7 +761,7 @@ const G = (() => {
       const d = dyn[i], p = d.m.position; let done = false, nb;
       if (d.mode === 'suck') {
         const tx = camera.position.x, ty = camera.position.y - .5, tz = camera.position.z, dx = tx - p.x, dy = ty - p.y, dz = tz - p.z, L = Math.hypot(dx, dy, dz), sp = 22 * dt;
-        if (L < sp + .5) { P.bag.push(d.info); P.incoming--; A.play('pop'); done = true; }
+        if (L < sp + .5) { if (D.ITEMS[d.info.t].food || D.ITEMS[d.info.t].med) collect(d.info.t); else P.bag.push(d.info); P.incoming--; A.play('pop'); done = true; }
         else { p.x += dx / L * sp; p.y += dy / L * sp; p.z += dz / L * sp; d.m.scale.setScalar(Math.min(1, L / 3)); }
       } else {
         d.vy -= GRAV * dt; p.x += d.vx * dt; p.y += d.vy * dt; p.z += d.vz * dt;
@@ -645,6 +812,10 @@ const G = (() => {
   const ray = new T.Raycaster(), ndc = new T.Vector2(), tv = new V3();
   function pickAt(o, d, reach) {
     let best = null, bt = 1e9, heavy = null;
+    if (P.top) {
+      for (const g of gadgets) { tv.set(g.x - o.x, g.y - o.y, g.z - o.z); const t = tv.dot(d); if (t > 0 && t < 3.6 && tv.lengthSq() - t * t < g.r * g.r && t < bt) { bt = t; best = g; } }
+      return best ? { gd: best } : null;
+    }
     for (const s of specials) {
       tv.set(s.x - o.x, s.y + .3 - o.y, s.z - o.z); const t = tv.dot(d);
       if (t > 0 && t < reach + 1.5 && tv.lengthSq() - t * t < 1.2 && t < bt) { bt = t; best = s; }
@@ -662,6 +833,7 @@ const G = (() => {
     if (sx == null) ndc.set(0, 0); else ndc.set(sx / window.innerWidth * 2 - 1, -(sy / window.innerHeight) * 2 + 1);
     camera.updateMatrixWorld(); ray.setFromCamera(ndc, camera); const o = ray.ray.origin, d = ray.ray.direction;
     const hit = pickAt(o, d, C.reach);
+    if (P.top) { if (hit) { hit.gd.use(); A.play('pick'); } return; }
     if (hit && hit.sp) { if (hit.sp.kind === 'door' || hit.sp.kind === 'post') useSpecial(hit.sp); else takeSpecial(hit.sp); return; }
     if (P.held) {                                 // с находкой в руках: целишься в горн — бросок
       const F = nearForge(o.x, o.z), hx = F.x - o.x, hz = F.z - o.z, hl = Math.hypot(hx, hz);
@@ -669,6 +841,7 @@ const G = (() => {
     }
     if (hit) {
       const it = hit.it, I = D.ITEMS[it.t];
+      if (I.food || I.med) { removeItem(it); collect(it.t); S.st.picked++; return; }
       if (I.w > C.str) { UI.toast('Слишком тяжело: ' + I.w + ' кг. Прокачай «Силу» (сейчас ' + C.str + ' кг)'); A.play('no'); return; }
       if (P.held) {
         if (P.held.t !== 'heart' && it.t !== 'heart' && P.bag.length + P.incoming < C.bagCap) P.bag.push(P.held);
@@ -714,7 +887,7 @@ const G = (() => {
     }
   }
   function goHome() {
-    if (!S.up.home || ending) return;
+    if (!S.up.home || ending) return; if (P.top) { goDown(); return; }
     if (Math.hypot(P.x, P.z) > 14) { P.back = { x: P.x, z: P.z, yaw: P.yaw }; P.x = 4.5; P.z = 13.5; P.yaw = Math.atan2(-(HP.x - P.x), -(HP.z - P.z)); }
     else if (P.back) { P.x = P.back.x; P.z = P.back.z; P.yaw = P.back.yaw; P.back = null; }
     else { UI.toast('Отойди от маяка — тогда раковина запомнит место'); return; }
@@ -832,10 +1005,9 @@ const G = (() => {
     hemi.color.copy(u.top.value).lerp(c2.set(0xffffff), .55);
     const night = i === 2 ? 1 - Math.abs(f - .5) * 1.2 : i === 1 ? f * .4 : i === 3 ? 0 : 0;
     beam.userData.mat.opacity = .05 + night * .16 + S.lh * .008; wall.material.color.set(0x34557c).lerp(u.hor.value, .12);
-    sunBall.material.color.copy(sun.color); sky.userData.clouds.material.color.copy(u.hor.value).lerp(c2.set(0xffffff), .6);
     const ang = t / 4 * 6.283, sx = Math.cos(ang * .5 + .6), sy = .35 + .3 * Math.cos(ang), sz = Math.sin(ang * .5 + .6);
     sun.position.set(P.x + sx * 90, 60 + sy * 60, P.z + sz * 90); sun.target.position.set(P.x, 0, P.z);
-    sunBall.position.set(camera.position.x + sx * 600, camera.position.y + 90 + sy * 160, camera.position.z + sz * 600); sunBall.lookAt(camera.position);
+    u.sunDir.value.set(sx * 90, 60 + sy * 60, sz * 90).normalize(); u.sunCol.value.copy(sun.color); u.t.value = time;
     sky.position.copy(camera.position);
   }
   let lastT = 0;
@@ -849,7 +1021,8 @@ const G = (() => {
       camera.rotation.y = Math.atan2(camera.position.x, camera.position.z); wallR += dt * 30; scene.fog.far = 210 + ending * 20;
     }
     updFire(dt);
-    beam.rotation.y += dt * .35;
+    if (S.beam.hold) { if (P.top) beam.rotation.y = P.yaw + Math.PI / 2; } else beam.rotation.y += dt * .35 * S.beam.sp;
+    beam.visible = !!S.beam.on; lampMesh.material.color.setHex(S.beam.on ? 0xfff3c0 : 0x39424a);
     wallR = ending ? wallR : lerp(wallR, C.lit + 1.5, Math.min(1, dt * 1.2)); wall.scale.set(wallR, 1, wallR);
     updFx(dt); updDyn(dt); updSky();
     for (const s of specials) { s.mesh.rotation.y += dt * (s.kind === 'star' || s.kind === 'part' ? 2 : .4); if (s.kind === 'part') s.mesh.position.y = s.y + .25 + Math.sin(time * 2 + s.x) * .12; s.glow.material.opacity = .55 + .3 * Math.sin(time * 3 + s.x); if (s.kind === 'star') s.mesh.position.y = s.y + .6 + Math.sin(time * 2) * .2; }
@@ -869,25 +1042,32 @@ const G = (() => {
     const K = input.keys; let mx = input.mx + (K.KeyD || K.ArrowRight ? 1 : 0) - (K.KeyA || K.ArrowLeft ? 1 : 0), mz = input.mz + (K.KeyS || K.ArrowDown ? 1 : 0) - (K.KeyW || K.ArrowUp ? 1 : 0);
     const ml = Math.hypot(mx, mz); if (ml > 1) { mx /= ml; mz /= ml; }
     if (ml > .05 && !UI.open()) {
-      const s = Math.sin(P.yaw), c = Math.cos(P.yaw), sp = C.speed * dt * (P.held && P.held.t === 'heart' ? .8 : 1);
+      const s = Math.sin(P.yaw), c = Math.cos(P.yaw), sp = C.speed * dt * (P.held && P.held.t === 'heart' ? .8 : 1) * (S.hunger <= 0 ? .6 : 1) * (P.top ? .55 : 1);
       P.x += (mx * c + mz * s) * sp; P.z += (-mx * s + mz * c) * sp; P.bob += dt * 11 * Math.min(1, ml);
-      for (const o of colliders) { const ox = P.x - o.x, oz = P.z - o.z, od = Math.hypot(ox, oz), R = o.r + .45; if (od < R) { P.x = o.x + ox / od * R; P.z = o.z + oz / od * R; } }
-      const r = Math.hypot(P.x, P.z), lim = Math.min(C.lit - .8, D.WORLD_R - 1);
-      if (r > lim) { P.x *= lim / r; P.z *= lim / r; if (time - lastToastWall > 4) { UI.toast(S.lh >= 7 ? 'Дальше — бездна' : 'Дальше мгла. Разожги маяк, чтобы пройти'); lastToastWall = time; } }
+      if (!P.top) for (const o of colliders) { const ox = P.x - o.x, oz = P.z - o.z, od = Math.hypot(ox, oz), R = o.r + .45; if (od < R) { P.x = o.x + ox / od * R; P.z = o.z + oz / od * R; } }
+      const r = Math.hypot(P.x, P.z) || 1, lim = Math.min(C.lit - .8, D.WORLD_R - 1);
+      if (P.top) { const k = clamp(r, 2.3, 4.05) / r; P.x *= k; P.z *= k; }
+      else if (r > lim) { P.x *= lim / r; P.z *= lim / r; if (time - lastToastWall > 4) { UI.toast(S.lh >= 7 ? 'Дальше — бездна' : 'Дальше мгла. Разожги маяк, чтобы пройти'); lastToastWall = time; } }
     }
-    const cl = cellAt(P.x, P.z), ty = groundH(P.x, P.z) + Math.min(1.3, cl ? cl.h * .55 : 0);
-    P.y = lerp(P.y, ty, Math.min(1, dt * 9));
-    camera.position.set(P.x, P.y + EYE + Math.sin(P.bob) * .045, P.z); camera.rotation.set(P.pitch, P.yaw, 0);
-    const pr = Math.hypot(P.x, P.z), z = pr < 16 ? -1 : zoneAt(pr);
+    const cl = cellAt(P.x, P.z), ty = P.top ? 23.15 : groundH(P.x, P.z) + Math.min(1.3, cl ? cl.h * .55 : 0);
+    P.y = P.top ? ty : lerp(P.y, ty, Math.min(1, dt * 9));
+    if (P.top && (boardT -= dt) <= 0) { boardT = 1; drawBoards(); }
+    camera.position.set(P.x + shake * (Math.random() - .5), P.y + EYE + Math.sin(P.bob) * .045 + shake * (Math.random() - .5), P.z); camera.rotation.set(P.pitch, P.yaw, 0);
+    const pr = Math.hypot(P.x, P.z), z = pr < 16 || P.top ? -1 : zoneAt(pr);
     if (z !== zoneShown) { zoneShown = z; if (z >= 0) { UI.zone(D.ZONES[z].name, '×' + D.ZONES[z].mult + ' света'); S.st.maxZone = Math.max(S.st.maxZone, z); if (z >= 1 && !S.posts.includes(z)) UI.toast('Здесь есть потухший горн. Найди 3 детали (' + partsIn(z) + '/3) и зажги его — не придётся бегать к маяку'); } }
     // мешок высыпается у горна
     const nf = nearForge(P.x, P.z), hd = Math.hypot(P.x - nf.x, P.z - nf.z); dumpT -= dt;
-    if (hd < (nf.main ? 8.5 : 6.5) && P.bag.length && dumpT <= 0) { launch(P.bag.pop(), P.x, P.y + 1.2, P.z, 'bag'); dumpT = .11; A.play('throw'); }
+    if (P.top) { /* наверху мешок не высыпается */ }
+    else if (hd < (nf.main ? 8.5 : 6.5) && P.bag.length && dumpT <= 0) { launch(P.bag.pop(), P.x, P.y + 1.2, P.z, 'bag'); dumpT = .11; A.play('throw'); }
     else if (P.bag.length && dumpT <= 0 && S.belt.length > 1) {              // мешок высыпается на ленту
       const nb = nearBelt(P.x, P.z);
       if (nb.d < 4.5) { const t = .4, y0 = P.y + 1.2; launch(P.bag.pop(), P.x, y0, P.z, 'bag', new V3((nb.x - P.x) / t, (nb.y + .3 - y0 + .5 * GRAV * t * t) / t, (nb.z - P.z) / t)); dumpT = .13; A.play('throw'); }
     }
-    updVac(dt); updCrabs(dt); updBelt(dt); updEvents(dt);
+    if (!P.top) updVac(dt); updCrabs(dt); updBelt(dt); updEvents(dt); updTornado(dt);
+    // сытость
+    S.hunger = Math.max(0, S.hunger - dt * .2);
+    if (S.hunger < 35 && S.food > 0) { S.food--; S.hunger += 40; UI.toast('🍖 Перекусил из припасов. Осталось: ' + S.food); }
+    if (S.hunger <= 0 && time - hungryT > 25) { hungryT = time; UI.toast('Ты голоден и идёшь медленно. Ищи еду: консервы, фляги, вяленое мясо'); }
     if (combo.t > 0) { combo.t -= dt; if (combo.t <= 0) combo.n = 0; }
     // возвращение находок течением
     if (dead.length && time - dead[0].at > C.respawn) {
@@ -903,20 +1083,21 @@ const G = (() => {
   function senseTarget() {
     if (!S.up.sense && !S.door) return null; let best = null, bd = 1e9;
     for (const s of specials) {
-      if (s.kind === 'door' && partsIn(0) < 3) continue; if (s.kind === 'post' && partsIn(s.id) < 3) continue;
+      if (s.kind === 'door' && (S.door || partsIn(0) < 3)) continue; if (s.kind === 'post' && partsIn(s.id) < 3) continue;
       if (Math.hypot(s.x, s.z) > C.lit - 1) continue; const d = Math.hypot(s.x - P.x, s.z - P.z); if (d < bd) { bd = d; best = s; }
     }
     return best && { d: bd, ang: Math.atan2(-(best.x - P.x), -(best.z - P.z)) - P.yaw, kind: best.kind };
   }
   function lookInfo() {            // подпись под прицелом
-    ndc.set(0, 0); ray.setFromCamera(ndc, camera); const h = pickAt(ray.ray.origin, ray.ray.direction, C.reach);
-    if (!h) return null; if (h.sp) return { name: { chest: 'Сундук', bottle: 'Бутылка с письмом', star: 'Упавшая звезда', part: 'Спрятанная деталь', door: 'Дверь маяка', post: 'Потухший горн' }[h.sp.kind], sp: 1 };
+    ndc.set(0, 0); camera.updateMatrixWorld(); ray.setFromCamera(ndc, camera); const h = pickAt(ray.ray.origin, ray.ray.direction, C.reach);
+    if (!h) return null; if (h.gd) return { name: h.gd.name, sp: 1 };
+    if (h.sp) return { name: { chest: 'Сундук', bottle: 'Бутылка с письмом', star: 'Упавшая звезда', part: 'Спрятанная деталь', door: 'Дверь маяка', post: 'Потухший горн' }[h.sp.kind], sp: 1 };
     const I = D.ITEMS[h.it.t]; return { name: I.name, w: I.w, rar: h.it.rar, v: valueOf(h.it) * C.lightMul, heavy: I.w > C.str };
   }
   window.addEventListener('pagehide', save); document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
 
   return {
-    init, get S() { return S; }, C, P, input, buy, kindle, canSee, action, goHome, save, rebirth, wipe, calc, senseTarget, lookInfo, touch, partsIn, get forges() { return forges; }, buildBelt, beltCost, beltSegs, get beltItems() { return beltItems; },
+    init, get S() { return S; }, C, P, input, buy, kindle, canSee, action, goHome, save, rebirth, wipe, calc, senseTarget, lookInfo, touch, partsIn, goTop, goDown, startTornado, get tor() { return tor; }, get forges() { return forges; }, buildBelt, beltCost, beltSegs, get beltItems() { return beltItems; },
     start() { running = true; A.unlock(); A.set(S.opt.snd); }, get running() { return running; }, get rate() { return rate; }, get combo() { return combo; },
     get ending() { return ending; }, project(p) { tv.set(p.x, p.y, p.z).project(camera); return tv.z > 1 ? null : { x: (tv.x + 1) / 2 * window.innerWidth, y: (1 - tv.y) / 2 * window.innerHeight }; },
     HP, _dbg: { inst, specials, crabs, dyn, takeSpecial, sim(n, dt) { for (let i = 0; i < n; i++) { time += dt; step(dt); updDyn(dt); updFire(dt); } }, get camera() { return camera; }, get ev() { return ev; } }

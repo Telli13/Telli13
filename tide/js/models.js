@@ -135,6 +135,21 @@ const M = (() => {
   const kelp = () => merge([[0, 1.7, .12, 0, 0x3f9a6a], [.16, 1.2, -.15, .8, 0x58b47c], [-.15, 1.0, .2, -.6, 0x2f8258], [.05, 1.4, -.08, 2, 0x4aa672]].map(k =>
     P(sph(.5, 6, 8), k[4], [k[0], k[1] / 2, k[0] * .5], [0, k[3], k[2]], [.16, k[1], .035])), false);
 
+  // ---------- готовые модели (js/assets.js, Quaternius CC0) ----------
+  const b64 = (str, Ty) => { const bin = atob(str), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return new Ty(u.buffer); };
+  const has = name => typeof ASSETS !== 'undefined' && !!ASSETS[name];
+  function asset(name, size) {                       // size — наибольший габарит в метрах
+    const a = ASSETS[name], p = b64(a.p, Int16Array), n = b64(a.n, Int8Array), c = b64(a.c, Uint8Array), cnt = p.length / 3;
+    const pos = new Float32Array(cnt * 3), nor = new Float32Array(cnt * 3), col = new Float32Array(cnt * 3), uv = new Float32Array(cnt * 2), k = a.e * size / 32767;
+    for (let i = 0; i < cnt * 3; i++) { pos[i] = p[i] * k; nor[i] = n[i] / 127; col[i] = Math.pow(c[i] / 255, 2.2) * 1.9; }
+    for (let i = 0; i < cnt; i++) { uv[i * 2] = 4.5 / 512; uv[i * 2 + 1] = 1 - 4.5 / 512; }
+    const g = new T.BufferGeometry();
+    g.setAttribute('position', new T.BufferAttribute(pos, 3)); g.setAttribute('normal', new T.BufferAttribute(nor, 3));
+    g.setAttribute('color', new T.BufferAttribute(col, 3)); g.setAttribute('uv', new T.BufferAttribute(uv, 2));
+    g.setIndex(new T.BufferAttribute(b64(a.i, Uint16Array), 1)); g.userData.dims = a.d.map(v => v * size);
+    return g;
+  }
+
   // ---------- текстуры ----------
   function atlas() {
     const c = document.createElement('canvas'); c.width = c.height = 512; const x = c.getContext('2d'), R = Math.random;
@@ -166,17 +181,24 @@ const M = (() => {
       for (let i = -256; i < 512; i += 9) { x.strokeStyle = 'rgba(80,55,25,.5)'; x.lineWidth = 2.2; x.beginPath(); x.moveTo(i, 0); x.lineTo(i + 90, 256); x.stroke();
         x.strokeStyle = 'rgba(255,255,255,.35)'; x.lineWidth = 1; x.beginPath(); x.moveTo(i + 4, 0); x.lineTo(i + 94, 256); x.stroke(); }
     });
+    x.fillStyle = '#fff'; x.fillRect(0, 0, 9, 9);          // белый уголок: готовые модели красятся только вершинным цветом
     const t = new T.CanvasTexture(c); t.colorSpace = T.SRGBColorSpace; t.anisotropy = 4; return t;
   }
   function sandTex() {
-    const c = document.createElement('canvas'); c.width = c.height = 256; const x = c.getContext('2d'), R = Math.random;
-    x.fillStyle = '#eeeae4'; x.fillRect(0, 0, 256, 256);
-    for (let i = 0; i < 5000; i++) { x.fillStyle = R() < .55 ? `rgba(70,50,30,${R() * .16})` : `rgba(255,255,255,${R() * .3})`; x.fillRect(R() * 256, R() * 256, 1 + R() * 2, 1 + R() * 2); }
-    for (let y = -20; y < 276; y += 16) for (const o of [-256, 0, 256]) {          // рябь от ушедшей воды
-      x.strokeStyle = 'rgba(90,65,40,.16)'; x.lineWidth = 3; x.beginPath(); x.moveTo(o, y);
-      for (let k = 0; k <= 256; k += 32) x.lineTo(o + k, y + Math.sin(k / 256 * 6.283 * 2 + y * .3) * 5); x.stroke();
+    const c = document.createElement('canvas'); c.width = c.height = 512; const x = c.getContext('2d'), R = Math.random;
+    x.fillStyle = '#efebe4'; x.fillRect(0, 0, 512, 512);
+    for (let i = 0; i < 60; i++) { const r = 30 + R() * 70, g = x.createRadialGradient(0, 0, 0, 0, 0, r), px = R() * 512, py = R() * 512;   // пятна сырого и сухого песка
+      g.addColorStop(0, R() < .5 ? 'rgba(70,55,40,.10)' : 'rgba(255,250,235,.16)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+      for (const ox of [-512, 0, 512]) for (const oy of [-512, 0, 512]) { x.save(); x.translate(px + ox, py + oy); x.fillStyle = g; x.fillRect(-r, -r, r * 2, r * 2); x.restore(); } }
+    for (let i = 0; i < 26000; i++) { x.fillStyle = R() < .55 ? `rgba(70,50,30,${R() * .2})` : `rgba(255,255,255,${R() * .35})`; x.fillRect(R() * 512, R() * 512, 1 + R() * 1.6, 1 + R() * 1.6); }
+    for (let y = -20; y < 532; y += 13) for (const o of [-512, 0, 512]) {          // рябь от ушедшей воды
+      x.strokeStyle = 'rgba(95,70,45,.13)'; x.lineWidth = 2.2; x.beginPath(); x.moveTo(o, y);
+      for (let k = 0; k <= 512; k += 16) x.lineTo(o + k, y + Math.sin(k / 512 * 6.283 * 3 + y * .21) * 4 + Math.sin(k / 512 * 6.283 * 7 + y) * 1.2); x.stroke();
+      x.strokeStyle = 'rgba(255,255,255,.12)'; x.lineWidth = 1.4; x.beginPath(); x.moveTo(o, y + 3);
+      for (let k = 0; k <= 512; k += 16) x.lineTo(o + k, y + 3 + Math.sin(k / 512 * 6.283 * 3 + y * .21) * 4 + Math.sin(k / 512 * 6.283 * 7 + y) * 1.2); x.stroke();
     }
-    const t = new T.CanvasTexture(c); t.colorSpace = T.SRGBColorSpace; t.wrapS = t.wrapT = T.RepeatWrapping; t.anisotropy = 4; return t;
+    for (let i = 0; i < 140; i++) { x.fillStyle = `rgba(${R() < .5 ? '250,245,235' : '90,80,70'},.5)`; x.beginPath(); x.ellipse(R() * 512, R() * 512, 1.5 + R() * 2.5, 1 + R() * 1.5, R() * 3, 0, 6.3); x.fill(); }  // ракушки и галька
+    const t = new T.CanvasTexture(c); t.colorSpace = T.SRGBColorSpace; t.wrapS = t.wrapT = T.RepeatWrapping; t.anisotropy = 8; return t;
   }
   function flameTex() {            // язык пламени: светлое основание, оранжевая середина, красный кончик
     const c = document.createElement('canvas'); c.width = 64; c.height = 128; const x = c.getContext('2d');
@@ -197,5 +219,5 @@ const M = (() => {
     const t = new T.CanvasTexture(c); t.colorSpace = T.SRGBColorSpace; return t;
   }
 
-  return { P, merge, items, chest, letter, star, part, crab, rock, coral, kelp, box, cyl, cone, ico, sph, tor, lathe, atlas, sandTex, flameTex, coalTex, WOOD, METAL, CLAY, ROPE };
+  return { P, merge, items, chest, letter, star, part, crab, asset, has, rock, coral, kelp, box, cyl, cone, ico, sph, tor, lathe, atlas, sandTex, flameTex, coalTex, WOOD, METAL, CLAY, ROPE };
 })();

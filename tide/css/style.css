@@ -108,3 +108,8 @@ body:not(.desk) #toasts div{max-width:64vw;text-align:left}
 .stages{display:flex;flex-wrap:wrap;gap:6px}.stages span{flex:1 1 130px;background:#fff1;border-radius:10px;padding:6px 8px;font-size:12px;opacity:.5}
 .stages span small{display:block;font-size:10px;opacity:.8;line-height:1.2}.stages span.ok{opacity:.85;background:#2fae7c33}.stages span.now{opacity:1;background:#f2c07833;outline:2px solid #f2c078}
 #shop #tabs{flex-wrap:wrap;overflow:visible}#tabs button{padding:7px 9px}
+
+#left{display:flex;flex-direction:column;gap:5px;align-items:flex-start}
+#vit{display:flex;align-items:center;gap:6px;font-size:12px;text-shadow:0 1px 3px #000}
+#hun{display:block;width:74px;height:9px;border-radius:5px;background:rgba(20,28,44,.75);border:1px solid #fff4;overflow:hidden}
+#hun i{display:block;height:100%;background:linear-gradient(90deg,#ff7a3a,#ffd66e)}#hun.low i{background:#ff4a3a}

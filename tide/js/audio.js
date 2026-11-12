@@ -1,7 +1,7 @@
 // Звук: всё синтезируется WebAudio, файлов нет
 'use strict';
 const A = (() => {
-  let ctx, master, on = true;
+  let ctx, master, on = true, windG, windF;
   function unlock() {
     if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
     try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; }
@@ -27,7 +27,7 @@ const A = (() => {
     const s = ctx.createBufferSource(); nbuf || noise(0, .01, 100, .0001); s.buffer = nbuf; s.loop = true;
     const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 420; const g = ctx.createGain(); g.gain.value = .09;
     const l = ctx.createOscillator(), lg = ctx.createGain(); l.frequency.value = .13; lg.gain.value = 180; l.connect(lg); lg.connect(f.frequency); l.start();
-    s.connect(f); f.connect(g); g.connect(master); s.start();
+    s.connect(f); f.connect(g); g.connect(master); s.start(); windG = g; windF = f;
     // тихая музыка: медленные аккорды
     const chords = [[220, 277, 330], [196, 247, 294], [175, 220, 262], [196, 247, 330]]; let i = 0;
     const next = () => {
@@ -46,10 +46,12 @@ const A = (() => {
     burn: n => { noise(0, .3, 1800, .12, .6); const p = 440 * Math.pow(1.0595, Math.min(n || 0, 24)); tone(p, 0, .25, 'triangle', .16); tone(p * 1.5, .05, .25, 'sine', .08); },
     buy: () => { tone(660, 0, .1, 'triangle', .15); tone(880, .08, .16, 'triangle', .15); },
     art: () => [523, 659, 784, 1047].forEach((f, i) => tone(f, i * .09, .5, 'sine', .13)),
+    ring: () => { for (let i = 0; i < 3; i++) { tone(440, i * 1.4, .9, 'sine', .1); tone(480, i * 1.4, .9, 'sine', .1); } },
     level: () => { [262, 330, 392, 523, 659, 784].forEach((f, i) => tone(f, i * .11, .9, 'triangle', .14)); noise(0, 1.2, 600, .1, .4); }
   };
   return {
     unlock, play(n, a) { if (ctx && on && sfx[n]) try { sfx[n](a); } catch (e) { } },
+    wind(v) { if (windG) { windG.gain.value = .09 + v * .5; windF.frequency.value = 420 + v * 500; } },
     set(v) { on = !!v; if (master) master.gain.value = on ? .5 : 0; }
   };
 })();

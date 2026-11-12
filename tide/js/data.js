@@ -20,6 +20,33 @@ D.ITEMS = {
   heart:     { name: 'Сердце моря',        w: 60, v: 0,  size: .80 }
 };
 
+// находки из готовых моделей (m — имя модели в assets.js); food — сытость, med — лекарство
+Object.assign(D.ITEMS, {
+  bag:      { name: 'Тюк с грузом',        w: 5,  v: 3,  size: .50, m: 'Bag' },
+  package:  { name: 'Посылка',             w: 3,  v: 3,  size: .42, m: 'Package' },
+  pot:      { name: 'Котелок',             w: 3,  v: 3,  size: .36, m: 'Pot' },
+  book:     { name: 'Судовой журнал',      w: 1,  v: 2,  size: .30, m: 'Book' },
+  skull:    { name: 'Череп',               w: 1,  v: 3,  size: .28, m: 'Skull' },
+  radio:    { name: 'Радио',               w: 2,  v: 5,  size: .36, m: 'Radio' },
+  gascan:   { name: 'Канистра',            w: 7,  v: 6,  size: .45, m: 'GasCan' },
+  trashcan: { name: 'Железный бак',        w: 8,  v: 5,  size: .55, m: 'Trashcan' },
+  backpack: { name: 'Рюкзак',              w: 4,  v: 5,  size: .45, m: 'Backpack' },
+  chalice:  { name: 'Кубок',               w: 2,  v: 9,  size: .30, m: 'Chalice' },
+  propane:  { name: 'Баллон',              w: 14, v: 11, size: .55, m: 'PropaneTank' },
+  bell:     { name: 'Корабельный колокол', w: 16, v: 14, size: .60, m: 'Bell' },
+  cauldron: { name: 'Котёл',               w: 20, v: 16, size: .70, m: 'Cauldron' },
+  gold:     { name: 'Слитки',              w: 10, v: 40, size: .40, m: 'Gold' },
+  crown:    { name: 'Корона',              w: 1,  v: 60, size: .30, m: 'Crown' },
+  can:      { name: 'Консервы',            w: 1,  v: 1,  size: .24, m: 'Can', food: 35 },
+  canred:   { name: 'Тушёнка',             w: 1,  v: 1,  size: .24, m: 'CanRed', food: 45 },
+  water:    { name: 'Фляга воды',          w: 1,  v: 1,  size: .30, m: 'WaterBottle', food: 25 },
+  chicken:  { name: 'Вяленое мясо',        w: 1,  v: 1,  size: .28, m: 'ChickenLeg', food: 30 },
+  medkit:   { name: 'Аптечка',             w: 2,  v: 1,  size: .34, m: 'FirstAidKit', med: 2 },
+  potion:   { name: 'Склянка с лекарством', w: 1, v: 1,  size: .24, m: 'Potion', med: 1 },
+  bandage:  { name: 'Бинты',               w: 1,  v: 1,  size: .22, m: 'Bandages', med: 1 }
+});
+D.ITEMS.crate.m = 'Crate'; D.ITEMS.barrel.m = 'Barrel';    // на высокой графике — готовые модели
+
 // зоны: кольца вокруг маяка
 D.ZONES = [
   { name: 'Отмель',            r0: 16,  r1: 42,  mult: 1,   count: 2600,
@@ -31,6 +58,11 @@ D.ZONES = [
   { name: 'Край бездны',       r0: 116, r1: 156, mult: 300, count: 2200,
     w: { amphora: 5, crate: 3, wheel: 3, barrel: 4, helmet: 7, propeller: 6, anchor: 6, cannon: 4 } }
 ];
+[ { bag: 5, package: 5, pot: 3, book: 3, skull: 2, radio: 1, backpack: 1, can: 2.2, canred: 1, water: 2.2, chicken: 1.2, potion: .7, bandage: .8, medkit: .3 },
+  { bag: 5, package: 4, pot: 3, book: 2, skull: 3, radio: 2, gascan: 4, trashcan: 4, backpack: 1.5, chalice: 1, propane: 2, bell: 1, can: 2, canred: 1.4, water: 2, chicken: 1, potion: .7, bandage: .7, medkit: .5 },
+  { bag: 3, skull: 3, gascan: 4, trashcan: 4, chalice: 2, propane: 4, bell: 3, cauldron: 3, gold: .6, can: 1.6, canred: 1.4, water: 1.8, chicken: 1, potion: .8, bandage: .6, medkit: .6 },
+  { skull: 3, trashcan: 3, chalice: 3, propane: 4, bell: 4, cauldron: 5, gold: 1.5, crown: .4, can: 1.4, canred: 1.4, water: 1.6, chicken: 1, potion: .8, bandage: .5, medkit: .7 }
+].forEach((w, i) => Object.assign(D.ZONES[i].w, w));
 D.WORLD_R = 158;
 
 // маяк: радиус света и цена следующего уровня
@@ -170,6 +202,7 @@ D.QUESTS = [
   ['Разожги маяк до 2-го уровня',                  s => s.lh >= 2, 200],
   ['Найми краба-носильщика',                       s => s.up.crab >= 1, 250],
   ['Построй секцию ленты (⬆ → вкладка «Лента»)',    s => s.belt.length >= 2, 400],
+  ['Поднимись на маяк: нажми на открытую дверь',    s => s.st.climbed >= 1, 300],
   ['Прочти письмо в бутылке',                      s => s.letters.length >= 1, 300],
   ['Купи раковину-вихрь',                          s => s.up.vac >= 1, 500],
   ['Сделай серию из 10 бросков подряд',            s => s.st.bestCombo >= 10, 800],
